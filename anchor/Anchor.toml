@@ -5,12 +5,14 @@ anchor_version = "0.31.1"
 resolution = true
 skip-lint = false
 
-# Placeholder ID. After the first `anchor build`, run `anchor keys sync`.
-[programs.localnet]
-taptrade = "Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS"
-
 [programs.devnet]
-taptrade = "Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS"
+taptrade = "GpbVJKqd8upWam5fskxxkfkkz28aFAxpbbLuNDzoGnR2"
+
+[programs.localnet]
+taptrade = "GpbVJKqd8upWam5fskxxkfkkz28aFAxpbbLuNDzoGnR2"
+
+[registry]
+url = "https://api.apr.dev"
 
 [provider]
 cluster = "localnet"

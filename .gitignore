@@ -1,0 +1,33 @@
+# Secrets — never commit (see CLAUDE.md: commit .env.example only)
+.env
+.env.*
+!.env.example
+*keypair*.json
+id.json
+
+# Node
+node_modules/
+dist/
+*.log
+
+# Anchor / Rust
+.anchor/
+target/
+test-ledger/
+.yarn/
+
+# Android / Gradle
+.gradle/
+build/
+local.properties
+*.apk
+*.aab
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Editors / OS
+.idea/
+*.iml
+.DS_Store
+Thumbs.db

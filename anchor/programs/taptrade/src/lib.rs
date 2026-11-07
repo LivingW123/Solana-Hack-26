@@ -4,8 +4,8 @@ use anchor_spl::{
     token::{self, CloseAccount, Mint, Token, TokenAccount, TransferChecked},
 };
 
-// Placeholder. After the first `anchor build`, run `anchor keys sync`.
-declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
+// Program ID from target/deploy/taptrade-keypair.json (`anchor keys sync`).
+declare_id!("GpbVJKqd8upWam5fskxxkfkkz28aFAxpbbLuNDzoGnR2");
 
 /// Max escrow deadline, measured from the time of funding.
 pub const MAX_DEADLINE_SECS: i64 = 30 * 24 * 60 * 60;

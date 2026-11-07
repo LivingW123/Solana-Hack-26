@@ -3,6 +3,10 @@ name = "taptrade"
 version = "0.1.0"
 description = "TapTrade: campus marketplace escrow"
 edition = "2021"
+# Matches the cargo/rustc bundled with Solana platform-tools (cargo-build-sbf).
+# Lets `CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback cargo update` pick
+# dependency versions the SBF toolchain can compile (no edition 2024 crates).
+rust-version = "1.79"
 
 [lib]
 crate-type = ["cdylib", "lib"]

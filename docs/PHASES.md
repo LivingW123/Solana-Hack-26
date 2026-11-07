@@ -4,20 +4,20 @@ Each phase has an exit check. Don't start the next phase until the current one p
 Stretch items come only after Phase 9.
 
 ## Phase 0 — Toolchain (one-time)
-- [ ] WSL2 + Ubuntu (Anchor doesn't support native Windows well)
-- [ ] Rust, Solana CLI 2.1.x, Anchor 0.31.1 (via AVM), Node 20+
+- [x] WSL2 + Ubuntu (Anchor doesn't support native Windows well)
+- [x] Rust, Solana CLI 2.1.21, Anchor 0.31.1, Node 20+ (WSL is aarch64: Solana CLI built from source; Anchor via `cargo install`)
 - [ ] `solana config set --url devnet`, keypair, `solana airdrop 2`
 - [ ] Android Studio + two AVDs (seller = emulator-5554, buyer = emulator-5556)
 
 **Exit:** `anchor --version` and `solana --version` work in WSL; `adb devices` shows both emulators.
 
 ## Phase 1 — On-chain program  ← *in progress*
-- [x] Anchor workspace in `/program`
+- [x] Anchor workspace in `/anchor` (crate: `anchor/programs/taptrade`)
 - [x] Accounts: `Listing`, `Escrow` (+ ATA vault owned by escrow PDA), `Reputation`
 - [x] Instructions: `create_listing`, `cancel_listing`, `fund_escrow`, `release`, `refund_after_deadline`
 - [x] Tests for every invariant (vault exits, no double settle, wrong signer/mint/vault/seller, amounts, reputation write paths)
-- [ ] `anchor build` + `anchor keys sync` + `anchor test` green
-- [ ] `anchor deploy --provider.cluster devnet`; record `PROGRAM_ID`
+- [x] `anchor build` + `anchor keys sync` + `anchor test` green (25 passing). PROGRAM_ID = `GpbVJKqd8upWam5fskxxkfkkz28aFAxpbbLuNDzoGnR2`
+- [ ] `anchor deploy --provider.cluster devnet`; record `PROGRAM_ID` — blocked: devnet faucet rate-limited; fund deployer `7viHTXv4fdseFHw66aHu7VvQGhjzVhoaBNammCXiJwjc` (~3 SOL)
 
 **Exit:** `anchor test` green; program deployed to devnet.
 

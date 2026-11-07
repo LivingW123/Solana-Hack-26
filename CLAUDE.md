@@ -21,10 +21,11 @@ or the program's own rules ever move funds.
 ## Architecture
 
 ```
-/program   Anchor (Rust) program: escrow, listings, reputation
+/anchor    Anchor workspace; program crate in anchor/programs/taptrade, tests in anchor/tests
 /backend   TypeScript (Node) server: tx-request endpoints, indexer, AI endpoints
 /android   Kotlin app: wallet (Mobile Wallet Adapter), screens, fake tap
 /scripts   Dev helpers: airdrop, create test mint, fake-tap commands
+/docs      Build phases (docs/PHASES.md) and other notes
 ```
 
 - **Program (Anchor, devnet):** holds escrowed tokens, enforces deadlines,
@@ -189,7 +190,7 @@ in memory. No database needed for the hackathon.
 solana config set --url devnet
 solana-keygen new -o ~/.config/solana/id.json   # if needed
 solana airdrop 2
-cd program && anchor build && anchor test && anchor deploy
+cd anchor && anchor build && anchor test && anchor deploy
 
 # Backend
 cd backend && npm install && npm run dev        # serves on :3000
