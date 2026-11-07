@@ -4,6 +4,7 @@
 !.env.example
 *keypair*.json
 id.json
+scripts/.wallets/
 
 # Node
 node_modules/

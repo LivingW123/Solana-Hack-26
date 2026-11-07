@@ -6,28 +6,28 @@ Stretch items come only after Phase 9.
 ## Phase 0 — Toolchain (one-time)
 - [x] WSL2 + Ubuntu (Anchor doesn't support native Windows well)
 - [x] Rust, Solana CLI 2.1.21, Anchor 0.31.1, Node 20+ (WSL is aarch64: Solana CLI built from source; Anchor via `cargo install`)
-- [ ] `solana config set --url devnet`, keypair, `solana airdrop 2`
+- [x] `solana config set --url devnet`, keypair (deployer `7viHTXv4fdseFHw66aHu7VvQGhjzVhoaBNammCXiJwjc`), funded via faucet.solana.com
 - [ ] Android Studio + two AVDs (seller = emulator-5554, buyer = emulator-5556)
 
 **Exit:** `anchor --version` and `solana --version` work in WSL; `adb devices` shows both emulators.
 
-## Phase 1 — On-chain program  ← *in progress*
+## Phase 1 — On-chain program  ✅ done
 - [x] Anchor workspace in `/anchor` (crate: `anchor/programs/taptrade`)
 - [x] Accounts: `Listing`, `Escrow` (+ ATA vault owned by escrow PDA), `Reputation`
 - [x] Instructions: `create_listing`, `cancel_listing`, `fund_escrow`, `release`, `refund_after_deadline`
 - [x] Tests for every invariant (vault exits, no double settle, wrong signer/mint/vault/seller, amounts, reputation write paths)
 - [x] `anchor build` + `anchor keys sync` + `anchor test` green (25 passing). PROGRAM_ID = `GpbVJKqd8upWam5fskxxkfkkz28aFAxpbbLuNDzoGnR2`
-- [ ] `anchor deploy --provider.cluster devnet`; record `PROGRAM_ID` — blocked: devnet faucet rate-limited; fund deployer `7viHTXv4fdseFHw66aHu7VvQGhjzVhoaBNammCXiJwjc` (~3 SOL)
+- [x] `anchor deploy --provider.cluster devnet` — PROGRAM_ID `GpbVJKqd8upWam5fskxxkfkkz28aFAxpbbLuNDzoGnR2` (deploy tx `3cRMeKLN23YbVBPpZ9CsJsHMMqvph1AgzUyQY2w3kQxpLNTue9YynTTrUehWwVXnG3GCXPj6w9w79bsefgskyWVg`)
 
 **Exit:** `anchor test` green; program deployed to devnet.
 
-## Phase 2 — Scripts
-- [ ] `scripts/airdrop.ts` (SOL to test wallets)
-- [ ] `scripts/create-mint.ts` (tUSDC, 6 decimals → `.env`)
-- [ ] `scripts/mint-tusdc.ts` (mint to seller/buyer)
-- [ ] `.env.example`
+## Phase 2 — Scripts  ✅ done
+- [x] `scripts/airdrop.ts` (SOL to test wallets; falls back to a payer transfer when the faucet is rate-limited)
+- [x] `scripts/create-mint.ts` (tUSDC, 6 decimals → `backend/.env`) — TUSDC_MINT `EyzrmDn24RkXBitBu3mPm17WimXQDEz9sydJP2AfB2X5`
+- [x] `scripts/mint-tusdc.ts` (mint to seller/buyer) + `scripts/balances.ts`; `npm run setup` does all of it
+- [x] `backend/.env.example`
 
-**Exit:** Two devnet wallets each hold SOL and tUSDC.
+**Exit:** Two devnet wallets each hold SOL and tUSDC. ✓ seller `7vSeVcn4BV59Dy3AUkJuUoaiK4yaCzs6HFyGaKrkNpJS`, buyer `94qGDCxhkRiKorFp4VBoaryXwMPCE4P1RwyVSLtBtPBQ`: 0.5 SOL + 1000 tUSDC each
 
 ## Phase 3 — Android skeleton
 - [ ] Kotlin project, MWA wallet connect
