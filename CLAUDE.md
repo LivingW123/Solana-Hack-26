@@ -9,11 +9,28 @@ transactions before signing, and summarizes on-chain reputation.
 the history. AI reads that history and drafts actions. Only the user's signature
 or the program's own rules ever move funds.
 
+### Why Solana (every feature must serve one of these — no "chain bolted on")
+
+| Strength | Where it shows up | Rule for contributors |
+|---|---|---|
+| **Speed** | Release confirms in <1 s while both people are standing there. Seller's phone watches the escrow account over RPC websocket and flips to "Paid" the moment the chain confirms. | The seller's "Paid" state comes from the chain, never from the backend. |
+| **Low fees** | A $5–$20 trade is viable. Every settled trade closes its accounts and refunds rent, so net cost = tx fees (~0.000015 SOL, tested). | Don't add accounts that outlive a trade (except `Reputation`). |
+| **On-chain ownership** | Funds sit in a program vault, not with us. Listings (incl. title) live on-chain; the marketplace can be rebuilt from chain data alone. | The backend stores nothing that isn't derivable from chain (except nonces / AI cache). |
+| **Composability** | Pay with any SPL token (USDC). `Reputation` is a plain PDA other programs can read. Events (`ListingCreated`, `EscrowFunded`, `EscrowReleased`, …) let anyone index trades. Fund/release endpoints follow Solana Pay so any wallet works. | Use standards (SPL Token, Solana Pay, Actions) over custom protocols. |
+
+**Trust model:** the backend is a convenience (tx builder, indexer, LLM), never
+a source of truth. Anything that gates a signature — the explainer's rule
+checks — runs **on the phone** against account data fetched straight from RPC.
+
 ## Hackathon constraints
 
 - **No hardware.** All testing runs on two Android emulators. The NFC "tap" is
   simulated (see "Fake tap"). Do not write real NFC/HCE code beyond the
   interface stub.
+- **Emulators run on a teammate's x86 Windows machine.** The main dev laptop
+  is Windows on ARM64, where the Android Emulator isn't available. Program,
+  scripts and backend work happen on the ARM laptop (WSL); Android build/run
+  happens on the x86 machine. Setup: `docs/EMULATOR_SETUP.md`.
 - **Devnet only.** Never use mainnet keys or funds.
 - **Ship the demo path first.** Work through the build order below in order;
   do not start a stretch item until the demo path works end to end.
@@ -31,10 +48,11 @@ or the program's own rules ever move funds.
 - **Program (Anchor, devnet):** holds escrowed tokens, enforces deadlines,
   updates reputation counters.
 - **Backend:** builds unsigned transactions (Solana Pay transaction requests),
-  reads program accounts, calls the LLM. Holds the LLM API key. Never holds user
-  keys.
+  indexes program accounts + events, calls the LLM. Holds the LLM API key.
+  Never holds user keys. Stateless apart from nonces and caches.
 - **Android app:** connects a wallet through Mobile Wallet Adapter, shows
-  listings and reputation, runs the explainer before every signature.
+  listings and reputation, runs the explainer's rule checks **locally against
+  RPC** before every signature, and watches escrow accounts over websocket.
 - **AI:** hosted LLM API (fast/cheap tier), called only from the backend.
   Always returns strict JSON validated against a schema.
 
@@ -42,36 +60,38 @@ or the program's own rules ever move funds.
 
 ### Accounts (PDAs)
 
-- `Listing` — seeds `["listing", seller, listing_id]`
-  - `seller: Pubkey`, `price: u64` (token base units), `mint: Pubkey`,
-    `item_hash: [u8; 32]`, `status: Open | Funded | Closed | Cancelled`,
-    `bump: u8`
-- `Escrow` — seeds `["escrow", listing]`
-  - `buyer: Pubkey`, `seller: Pubkey`, `amount: u64`, `deadline: i64`,
-    `vault: Pubkey`, `status: Funded | Released | Refunded`, `bump: u8`
-  - Vault: token account owned by the escrow PDA.
-- `Reputation` — seeds `["rep", wallet]`
+- `Listing` — seeds `["listing", seller, listing_id]`. Exists while Open/Funded.
+  - `seller: Pubkey`, `listing_id: u64`, `price: u64` (token base units),
+    `mint: Pubkey`, `title: String` (≤ 64 bytes, on-chain),
+    `item_hash: [u8; 32]` (hash of off-chain description/photo),
+    `status: Open | Funded`, `bump: u8`
+- `Escrow` — seeds `["escrow", listing]`. Exists only while funds are locked.
+  - `buyer`, `seller`, `listing`, `mint`, `vault: Pubkey`, `amount: u64`,
+    `deadline: i64`, `bump: u8`
+  - Vault: ATA of (escrow PDA, mint).
+- `Reputation` — seeds `["rep", wallet]`. Never closed; readable by any program.
   - `completed: u32`, `refunded: u32`, `disputed: u32`, `first_trade_ts: i64`,
     `bump: u8`
   - Written **only** by the program inside `release` / `refund_after_deadline`.
 
 ### Instructions
 
-| Instruction | Signer | Effect |
-|---|---|---|
-| `create_listing(listing_id, price, mint, item_hash)` | seller | Creates `Listing` (Open) |
-| `cancel_listing` | seller | Only if Open → Cancelled |
-| `fund_escrow(deadline)` | buyer | Moves `price` into vault; Listing → Funded |
-| `release` | buyer | Vault → seller; Escrow → Released; Listing → Closed; both reputations `completed += 1` |
-| `refund_after_deadline` | anyone | Only after `deadline`; vault → buyer; seller `refunded += 1` |
+| Instruction | Signer | Effect | Event |
+|---|---|---|---|
+| `create_listing(listing_id, price, mint, title, item_hash)` | seller | Creates `Listing` (Open) | `ListingCreated` |
+| `cancel_listing` | seller | Only if Open; closes Listing (rent → seller) | `ListingCancelled` |
+| `fund_escrow(deadline)` | buyer | Moves `price` into vault; Listing → Funded | `EscrowFunded` |
+| `release` | buyer | Vault → seller; closes Escrow + vault (rent → buyer) and Listing (rent → seller); both reputations `completed += 1` | `EscrowReleased` |
+| `refund_after_deadline` | anyone | Only after `deadline`; vault → buyer; closes Escrow + vault (rent → buyer); Listing → Open again; seller `refunded += 1` | `EscrowRefunded` |
 
 ### Invariants (must have tests)
 
 - Funds leave the vault only via `release` (buyer signs) or
   `refund_after_deadline` (after deadline).
-- No double release / double refund (status checks).
+- No double release / double refund (the Escrow account is closed on settle).
 - Wrong signer, wrong mint, wrong vault, or wrong amount → error.
 - Reputation cannot be modified by any instruction other than the two above.
+- A completed trade between existing users costs only tx fees (all rent refunded).
 
 ### Test token
 
@@ -86,8 +106,13 @@ in `.env` / app config so it can be swapped for real devnet USDC later.
 2. The fake tap delivers that URL to the buyer's app (see below).
 3. Buyer's app `POST`s its wallet address to the URL; backend returns an
    unsigned `release` transaction (base64) and a label.
-4. **Explainer runs** (rule checks + LLM sentence). If any rule fails, block.
-5. Buyer signs through Mobile Wallet Adapter; app submits; show confirmation.
+4. **Explainer runs.** Rule checks run on the phone: decode the tx and compare
+   it with the `Escrow` account fetched directly from RPC. The LLM sentence
+   comes from the backend. If any rule fails, block.
+5. Buyer signs through Mobile Wallet Adapter; app submits; show confirmation
+   with elapsed time.
+6. Seller's phone, subscribed to the escrow account over RPC websocket, sees it
+   close and shows "Paid ✓" — no backend in that loop.
 
 Nonces are single-use and expire after 2 minutes (stored in backend memory is
 fine for the hackathon).
@@ -121,14 +146,17 @@ Leave a `NfcTapTransport` class as a TODO stub only.
 | Method | Path | Purpose |
 |---|---|---|
 | POST | `/ai/draft-listing` | `{text}` → validated listing JSON → unsigned `create_listing` tx |
+| GET | `/listings`, `/listings/:pubkey` | Indexed on-chain listings (title is on-chain) |
+| POST | `/tx/release/nonce` | Seller: `{escrow, seller}` → Solana Pay release URL with one-time nonce |
 | GET/POST | `/tx/release` | Solana Pay transaction request for `release` |
-| POST | `/tx/fund` | Unsigned `fund_escrow` tx (optionally with swap, see stretch) |
-| POST | `/ai/explain` | `{tx_base64, expected}` → `{ok, checks[], summary}` |
+| GET/POST | `/tx/fund` | Unsigned `fund_escrow` tx; Solana Pay / Actions shape so any wallet (or a Blink) can buy |
+| POST | `/ai/explain` | `{tx_base64, checks[]}` → `{summary}` (LLM sentence only; checks are done on the phone) |
 | GET | `/reputation/:wallet` | Counters from chain + score + one-line summary |
 | POST/GET | `/tap/publish`, `/tap/latest` | Debug relay for fake tap |
 
-Indexer: poll `getProgramAccounts` for our program every few seconds and cache
-in memory. No database needed for the hackathon.
+Indexer: poll `getProgramAccounts` for our program every few seconds (and/or
+subscribe to program logs for events) and cache in memory. No database: if the
+backend restarts, it rebuilds everything from chain.
 
 ## AI features (in priority order)
 
@@ -143,8 +171,10 @@ in memory. No database needed for the hackathon.
      associated-token programs where expected);
    - escrow, vault, seller and mint accounts match the on-chain `Escrow`;
    - amount equals `Escrow.amount`;
-   - no unexpected token approvals or transfers.
-   If any rule fails, return `ok: false` and the app blocks signing.
+   - no unexpected token approvals or transfers;
+   - the Solana Pay URL host is our backend (allowlist).
+   The checks run in the Android app against RPC data. If any rule fails, the
+   app blocks signing and lists the reasons; the LLM is not consulted.
 3. **Reputation score** — computed from on-chain counters with a simple,
    explainable formula (e.g. weighted completion rate with a prior for new
    wallets). The LLM only writes a one-line summary of the numbers; it does not

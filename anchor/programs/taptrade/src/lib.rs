@@ -9,11 +9,23 @@ declare_id!("GpbVJKqd8upWam5fskxxkfkkz28aFAxpbbLuNDzoGnR2");
 
 /// Max escrow deadline, measured from the time of funding.
 pub const MAX_DEADLINE_SECS: i64 = 30 * 24 * 60 * 60;
+/// Max listing title length in bytes (UTF-8).
+pub const MAX_TITLE_LEN: usize = 64;
 
 pub const LISTING_SEED: &[u8] = b"listing";
 pub const ESCROW_SEED: &[u8] = b"escrow";
 pub const REP_SEED: &[u8] = b"rep";
 
+/// Design notes (why this lives on Solana, not in a database):
+/// - Listings, including their title, are on-chain: any client can rebuild the
+///   whole marketplace from `getProgramAccounts` + events. The backend is only
+///   a convenience indexer / tx builder.
+/// - Every settled trade closes its accounts and refunds their rent, so a
+///   trade's net cost is just transaction fees (fractions of a cent).
+/// - Each state change emits an event, so trade history stays readable after
+///   the accounts are closed and other programs/indexers can follow along.
+/// - `Reputation` is written only by this program and is a plain PDA any other
+///   program can read.
 #[program]
 pub mod taptrade {
     use super::*;
@@ -23,25 +35,45 @@ pub mod taptrade {
         listing_id: u64,
         price: u64,
         mint: Pubkey,
+        title: String,
         item_hash: [u8; 32],
     ) -> Result<()> {
         require!(price > 0, TapError::InvalidPrice);
+        require!(
+            !title.trim().is_empty() && title.len() <= MAX_TITLE_LEN,
+            TapError::InvalidTitle
+        );
 
         let listing = &mut ctx.accounts.listing;
         listing.seller = ctx.accounts.seller.key();
         listing.listing_id = listing_id;
         listing.price = price;
         listing.mint = mint;
+        listing.title = title.clone();
         listing.item_hash = item_hash;
         listing.status = ListingStatus::Open;
         listing.bump = ctx.bumps.listing;
+
+        emit!(ListingCreated {
+            listing: listing.key(),
+            seller: listing.seller,
+            listing_id,
+            price,
+            mint,
+            title,
+            item_hash,
+        });
         Ok(())
     }
 
+    /// Open → account closed; rent back to the seller.
     pub fn cancel_listing(ctx: Context<CancelListing>) -> Result<()> {
-        let listing = &mut ctx.accounts.listing;
+        let listing = &ctx.accounts.listing;
         require!(listing.status == ListingStatus::Open, TapError::ListingNotOpen);
-        listing.status = ListingStatus::Cancelled;
+        emit!(ListingCancelled {
+            listing: listing.key(),
+            seller: listing.seller,
+        });
         Ok(())
     }
 
@@ -82,23 +114,31 @@ pub mod taptrade {
         escrow.vault = ctx.accounts.vault.key();
         escrow.amount = amount;
         escrow.deadline = deadline;
-        escrow.status = EscrowStatus::Funded;
         escrow.bump = ctx.bumps.escrow;
 
         ctx.accounts.listing.status = ListingStatus::Funded;
+
+        emit!(EscrowFunded {
+            listing: escrow.listing,
+            escrow: escrow.key(),
+            buyer: escrow.buyer,
+            seller,
+            mint: escrow.mint,
+            amount,
+            deadline,
+        });
         Ok(())
     }
 
+    /// Buyer releases the vault to the seller. Listing and escrow are closed
+    /// (rent → seller / buyer); both reputations `completed += 1`.
     pub fn release(ctx: Context<Release>) -> Result<()> {
         let now = Clock::get()?.unix_timestamp;
-        require!(
-            ctx.accounts.escrow.status == EscrowStatus::Funded,
-            TapError::AlreadySettled
-        );
 
         let listing_key = ctx.accounts.listing.key();
         let bump = [ctx.accounts.escrow.bump];
         let seeds: &[&[u8]] = &[ESCROW_SEED, listing_key.as_ref(), &bump];
+        let amount = ctx.accounts.escrow.amount;
 
         pay_out_of_vault(
             &ctx.accounts.token_program,
@@ -107,12 +147,9 @@ pub mod taptrade {
             ctx.accounts.seller_token.to_account_info(),
             ctx.accounts.escrow.to_account_info(),
             ctx.accounts.buyer.to_account_info(),
-            ctx.accounts.escrow.amount,
+            amount,
             &[seeds],
         )?;
-
-        ctx.accounts.escrow.status = EscrowStatus::Released;
-        ctx.accounts.listing.status = ListingStatus::Closed;
 
         let buyer_rep = &mut ctx.accounts.buyer_rep;
         touch_rep(buyer_rep, ctx.bumps.buyer_rep, now);
@@ -127,15 +164,23 @@ pub mod taptrade {
             .completed
             .checked_add(1)
             .ok_or(TapError::MathOverflow)?;
+
+        emit!(EscrowReleased {
+            listing: listing_key,
+            escrow: ctx.accounts.escrow.key(),
+            buyer: ctx.accounts.buyer.key(),
+            seller: ctx.accounts.seller.key(),
+            mint: ctx.accounts.mint.key(),
+            amount,
+        });
         Ok(())
     }
 
+    /// After the deadline anyone can refund the buyer. The escrow is closed
+    /// (rent → buyer) and the listing goes back to Open so the seller can sell
+    /// to someone else. Seller `refunded += 1`.
     pub fn refund_after_deadline(ctx: Context<RefundAfterDeadline>) -> Result<()> {
         let now = Clock::get()?.unix_timestamp;
-        require!(
-            ctx.accounts.escrow.status == EscrowStatus::Funded,
-            TapError::AlreadySettled
-        );
         require!(
             now > ctx.accounts.escrow.deadline,
             TapError::DeadlineNotReached
@@ -144,6 +189,7 @@ pub mod taptrade {
         let listing_key = ctx.accounts.listing.key();
         let bump = [ctx.accounts.escrow.bump];
         let seeds: &[&[u8]] = &[ESCROW_SEED, listing_key.as_ref(), &bump];
+        let amount = ctx.accounts.escrow.amount;
 
         pay_out_of_vault(
             &ctx.accounts.token_program,
@@ -152,12 +198,11 @@ pub mod taptrade {
             ctx.accounts.buyer_token.to_account_info(),
             ctx.accounts.escrow.to_account_info(),
             ctx.accounts.buyer.to_account_info(),
-            ctx.accounts.escrow.amount,
+            amount,
             &[seeds],
         )?;
 
-        ctx.accounts.escrow.status = EscrowStatus::Refunded;
-        ctx.accounts.listing.status = ListingStatus::Closed;
+        ctx.accounts.listing.status = ListingStatus::Open;
 
         let seller_rep = &mut ctx.accounts.seller_rep;
         touch_rep(seller_rep, ctx.bumps.seller_rep, now);
@@ -165,6 +210,15 @@ pub mod taptrade {
             .refunded
             .checked_add(1)
             .ok_or(TapError::MathOverflow)?;
+
+        emit!(EscrowRefunded {
+            listing: listing_key,
+            escrow: ctx.accounts.escrow.key(),
+            buyer: ctx.accounts.buyer.key(),
+            seller: ctx.accounts.seller.key(),
+            mint: ctx.accounts.mint.key(),
+            amount,
+        });
         Ok(())
     }
 }
@@ -248,6 +302,7 @@ pub struct CreateListing<'info> {
 
 #[derive(Accounts)]
 pub struct CancelListing<'info> {
+    #[account(mut)]
     pub seller: Signer<'info>,
 
     #[account(
@@ -255,6 +310,7 @@ pub struct CancelListing<'info> {
         seeds = [LISTING_SEED, listing.seller.as_ref(), &listing.listing_id.to_le_bytes()],
         bump = listing.bump,
         has_one = seller @ TapError::WrongSigner,
+        close = seller,
     )]
     pub listing: Account<'info, Listing>,
 }
@@ -305,10 +361,13 @@ pub struct FundEscrow<'info> {
 
 #[derive(Accounts)]
 pub struct Release<'info> {
+    /// Receives the escrow + vault rent back.
     #[account(mut)]
     pub buyer: Signer<'info>,
 
-    /// CHECK: must equal `escrow.seller` (has_one below).
+    /// CHECK: must equal `escrow.seller` and `listing.seller` (has_one below).
+    /// Receives the listing rent back.
+    #[account(mut)]
     pub seller: UncheckedAccount<'info>,
 
     #[account(
@@ -316,6 +375,8 @@ pub struct Release<'info> {
         seeds = [LISTING_SEED, listing.seller.as_ref(), &listing.listing_id.to_le_bytes()],
         bump = listing.bump,
         has_one = mint @ TapError::WrongMint,
+        has_one = seller @ TapError::WrongSeller,
+        close = seller,
     )]
     pub listing: Box<Account<'info, Listing>>,
 
@@ -328,6 +389,7 @@ pub struct Release<'info> {
         has_one = listing @ TapError::WrongListing,
         has_one = mint @ TapError::WrongMint,
         has_one = vault @ TapError::WrongVault,
+        close = buyer,
     )]
     pub escrow: Box<Account<'info, Escrow>>,
 
@@ -373,7 +435,7 @@ pub struct RefundAfterDeadline<'info> {
     #[account(mut)]
     pub caller: Signer<'info>,
 
-    /// CHECK: must equal `escrow.buyer` (has_one below). Receives the vault rent.
+    /// CHECK: must equal `escrow.buyer` (has_one below). Receives the escrow + vault rent.
     #[account(mut)]
     pub buyer: UncheckedAccount<'info>,
 
@@ -385,6 +447,7 @@ pub struct RefundAfterDeadline<'info> {
         seeds = [LISTING_SEED, listing.seller.as_ref(), &listing.listing_id.to_le_bytes()],
         bump = listing.bump,
         has_one = mint @ TapError::WrongMint,
+        has_one = seller @ TapError::WrongSeller,
     )]
     pub listing: Box<Account<'info, Listing>>,
 
@@ -397,6 +460,7 @@ pub struct RefundAfterDeadline<'info> {
         has_one = listing @ TapError::WrongListing,
         has_one = mint @ TapError::WrongMint,
         has_one = vault @ TapError::WrongVault,
+        close = buyer,
     )]
     pub escrow: Box<Account<'info, Escrow>>,
 
@@ -431,6 +495,7 @@ pub struct RefundAfterDeadline<'info> {
 // State
 // ---------------------------------------------------------------------------
 
+/// Exists while Open or Funded. Closed on `release` / `cancel_listing`.
 #[account]
 #[derive(InitSpace)]
 pub struct Listing {
@@ -439,11 +504,17 @@ pub struct Listing {
     /// Token base units.
     pub price: u64,
     pub mint: Pubkey,
+    /// Human-readable title, on-chain so any client can render the listing.
+    #[max_len(MAX_TITLE_LEN)]
+    pub title: String,
+    /// Hash of the full off-chain description / photo, for integrity.
     pub item_hash: [u8; 32],
     pub status: ListingStatus,
     pub bump: u8,
 }
 
+/// Exists only while funds are locked. Closed on `release` / `refund_after_deadline`,
+/// which is also what makes double release / double refund impossible.
 #[account]
 #[derive(InitSpace)]
 pub struct Escrow {
@@ -455,11 +526,11 @@ pub struct Escrow {
     pub vault: Pubkey,
     pub amount: u64,
     pub deadline: i64,
-    pub status: EscrowStatus,
     pub bump: u8,
 }
 
-/// Written only by `release` and `refund_after_deadline`.
+/// Written only by `release` and `refund_after_deadline`. Never closed.
+/// Readable by any program: PDA `["rep", wallet]` owned by this program.
 #[account]
 #[derive(InitSpace)]
 pub struct Reputation {
@@ -474,21 +545,66 @@ pub struct Reputation {
 pub enum ListingStatus {
     Open,
     Funded,
-    Closed,
-    Cancelled,
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, InitSpace)]
-pub enum EscrowStatus {
-    Funded,
-    Released,
-    Refunded,
+// ---------------------------------------------------------------------------
+// Events (trade history survives account closing; indexers subscribe to these)
+// ---------------------------------------------------------------------------
+
+#[event]
+pub struct ListingCreated {
+    pub listing: Pubkey,
+    pub seller: Pubkey,
+    pub listing_id: u64,
+    pub price: u64,
+    pub mint: Pubkey,
+    pub title: String,
+    pub item_hash: [u8; 32],
+}
+
+#[event]
+pub struct ListingCancelled {
+    pub listing: Pubkey,
+    pub seller: Pubkey,
+}
+
+#[event]
+pub struct EscrowFunded {
+    pub listing: Pubkey,
+    pub escrow: Pubkey,
+    pub buyer: Pubkey,
+    pub seller: Pubkey,
+    pub mint: Pubkey,
+    pub amount: u64,
+    pub deadline: i64,
+}
+
+#[event]
+pub struct EscrowReleased {
+    pub listing: Pubkey,
+    pub escrow: Pubkey,
+    pub buyer: Pubkey,
+    pub seller: Pubkey,
+    pub mint: Pubkey,
+    pub amount: u64,
+}
+
+#[event]
+pub struct EscrowRefunded {
+    pub listing: Pubkey,
+    pub escrow: Pubkey,
+    pub buyer: Pubkey,
+    pub seller: Pubkey,
+    pub mint: Pubkey,
+    pub amount: u64,
 }
 
 #[error_code]
 pub enum TapError {
     #[msg("Price must be greater than zero")]
     InvalidPrice,
+    #[msg("Title must be 1-64 bytes")]
+    InvalidTitle,
     #[msg("Mint does not match the listing")]
     WrongMint,
     #[msg("Signer is not authorized for this action")]
@@ -503,8 +619,6 @@ pub enum TapError {
     WrongVault,
     #[msg("Listing is not open")]
     ListingNotOpen,
-    #[msg("Escrow is already settled")]
-    AlreadySettled,
     #[msg("Seller cannot buy their own listing")]
     SelfTrade,
     #[msg("Deadline must be in the future")]
