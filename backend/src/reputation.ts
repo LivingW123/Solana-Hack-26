@@ -7,6 +7,8 @@ import { llmJson } from "./llm";
 /** JSON shape served to the app (android `data/Models.kt` → `Reputation`). */
 export interface ReputationView {
   wallet: string;
+  /** The wallet's `Reputation` PDA (seeds ["rep", wallet]): the account the counters live in. */
+  account: string;
   /** On-chain counters from the `Reputation` PDA (written only by `release` / `refund_after_deadline`). */
   completed: number;
   refunded: number;
@@ -150,6 +152,7 @@ export async function getReputation(wallet: PublicKey): Promise<ReputationView> 
 
   return {
     wallet: wallet.toBase58(),
+    account: repPda(wallet).toBase58(),
     completed,
     refunded,
     disputed,

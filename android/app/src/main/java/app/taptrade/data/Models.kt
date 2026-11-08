@@ -47,6 +47,8 @@ data class Reputation(
     /** The score formula, shown so the number is explainable. */
     val formula: String = "",
     val summarySource: String = "fallback",
+    /** The wallet's `Reputation` PDA (where the counters live); empty if the backend didn't send it. */
+    val account: String = "",
 )
 
 /** `/ai/draft-listing` draft: what the seller reviews before signing. */

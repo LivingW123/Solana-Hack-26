@@ -97,7 +97,7 @@ fun ReputationCard(title: String, wallet: String?, rep: Reputation?) {
                         )
                     }
                 }
-                wallet?.let { ExplorerLink("Counters on-chain", Explorer.address(it)) }
+                (rep.account.ifEmpty { wallet })?.let { ExplorerLink("Counters on-chain", Explorer.address(it)) }
             }
         }
     }
