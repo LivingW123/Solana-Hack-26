@@ -38,7 +38,7 @@ fun ListingDetailScreen(
     onBack: () -> Unit,
     onHandoff: (pubkey: String, role: HandoffRole) -> Unit,
 ) {
-    val vm = screenViewModel { c, s -> ListingDetailViewModel(c.backend, c.wallet, s) }
+    val vm = screenViewModel { c, s -> ListingDetailViewModel(c.backend, c.wallet, c.rpc, s) }
     val state by vm.state.collectAsStateWithLifecycle()
     val address by vm.address.collectAsStateWithLifecycle()
     val sender = LocalActivityResultSender.current

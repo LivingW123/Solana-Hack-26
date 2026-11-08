@@ -9,7 +9,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -35,10 +43,20 @@ import app.taptrade.ui.screenViewModel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ListingsScreen(onOpen: (pubkey: String) -> Unit) {
-    val vm = screenViewModel { c, _ -> ListingsViewModel(c.backend, c.wallet) }
+    val vm = screenViewModel { c, _ -> ListingsViewModel(c.backend, c.wallet, c.rpc) }
     val state by vm.state.collectAsStateWithLifecycle()
     val address by vm.address.collectAsStateWithLifecycle()
     val sender = LocalActivityResultSender.current
+    var selling by rememberSaveable { mutableStateOf(false) }
+
+    if (selling) {
+        SellDialog(
+            busy = state.creating,
+            validate = vm::validate,
+            onDismiss = { selling = false },
+            onSubmit = { title, price -> vm.createListing(sender, title, price) { selling = false } },
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -51,12 +69,19 @@ fun ListingsScreen(onOpen: (pubkey: String) -> Unit) {
         },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
-            if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (state.loading || state.creating) LinearProgressIndicator(Modifier.fillMaxWidth())
             Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                 ErrorText(state.error)
+                state.message?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Listings", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                     TextButton(onClick = vm::refresh) { Text("Refresh") }
+                    if (address != null) {
+                        Button(onClick = { selling = true }, enabled = !state.creating) { Text("Sell") }
+                    }
+                }
+                if (!state.loading && state.listings.isEmpty()) {
+                    Text("No open listings on-chain yet.", style = MaterialTheme.typography.bodyMedium)
                 }
             }
             LazyColumn(
@@ -69,6 +94,51 @@ fun ListingsScreen(onOpen: (pubkey: String) -> Unit) {
             }
         }
     }
+}
+
+@Composable
+private fun SellDialog(
+    busy: Boolean,
+    validate: (title: String, price: String) -> String?,
+    onDismiss: () -> Unit,
+    onSubmit: (title: String, price: String) -> Unit,
+) {
+    var title by rememberSaveable { mutableStateOf("") }
+    var price by rememberSaveable { mutableStateOf("") }
+    val problem = validate(title, price)
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        title = { Text("New listing") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text("Title (on-chain)") },
+                    singleLine = true,
+                    enabled = !busy,
+                )
+                OutlinedTextField(
+                    value = price,
+                    onValueChange = { price = it },
+                    label = { Text("Price (tUSDC)") },
+                    singleLine = true,
+                    enabled = !busy,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                )
+                if (title.isNotEmpty() || price.isNotEmpty()) {
+                    problem?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+                }
+                Text("Your wallet signs; the listing lives on Solana.", style = MaterialTheme.typography.bodySmall)
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onSubmit(title, price) }, enabled = problem == null && !busy) {
+                Text(if (busy) "Listing…" else "List it")
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("Cancel") } },
+    )
 }
 
 @Composable

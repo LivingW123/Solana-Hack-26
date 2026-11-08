@@ -31,13 +31,15 @@ import app.taptrade.data.formatUnits
 import app.taptrade.data.shortAddress
 import app.taptrade.ui.ErrorText
 import app.taptrade.ui.Gap
+import app.taptrade.ui.LocalActivityResultSender
 import app.taptrade.ui.screenViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HandoffScreen(onBack: () -> Unit) {
-    val vm = screenViewModel { c, s -> HandoffViewModel(c.backend, c.wallet, c.tapTransport, s) }
+    val vm = screenViewModel { c, s -> HandoffViewModel(c.backend, c.wallet, c.rpc, c.tapTransport, s) }
     val state by vm.state.collectAsStateWithLifecycle()
+    val sender = LocalActivityResultSender.current
 
     Scaffold(
         topBar = {
@@ -48,7 +50,7 @@ fun HandoffScreen(onBack: () -> Unit) {
         },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
-            if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (state.loading || state.releasing) LinearProgressIndicator(Modifier.fillMaxWidth())
             Column(
                 Modifier.padding(16.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Gap,
@@ -57,7 +59,7 @@ fun HandoffScreen(onBack: () -> Unit) {
                 state.listing?.let { Summary(it) }
                 when (vm.role) {
                     HandoffRole.Seller -> SellerPanel(state, vm::publish, vm::regenerate)
-                    HandoffRole.Buyer -> BuyerPanel(state, state.listing, vm.canSimulateTap, vm::simulateTap)
+                    HandoffRole.Buyer -> BuyerPanel(state, state.listing, vm.canSimulateTap, vm::simulateTap) { vm.release(sender) }
                 }
             }
         }
@@ -72,8 +74,25 @@ private fun Summary(listing: Listing) {
 
 @Composable
 private fun SellerPanel(state: HandoffUiState, onPublish: () -> Unit, onRegenerate: () -> Unit) {
+    when (state.settlement) {
+        Settlement.Paid -> {
+            Text("Paid ✓", style = MaterialTheme.typography.displayMedium, color = MaterialTheme.colorScheme.primary)
+            Text("The escrow closed on-chain and the tUSDC is in your wallet. Your phone saw it straight from Solana, not from our server.")
+            return
+        }
+        Settlement.Refunded -> {
+            Text("Refunded", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.error)
+            Text("The deadline passed and the escrow was refunded to the buyer. Your listing is open again.")
+            return
+        }
+        null -> Unit
+    }
     val url = state.url ?: return
     Text("Ready for handoff", style = MaterialTheme.typography.titleLarge)
+    Text(
+        if (state.watching) "● Watching the escrow on-chain" else "○ Connecting to Solana…",
+        style = MaterialTheme.typography.labelMedium,
+    )
     Text("Hand over the item, then let the buyer tap your phone. Their wallet releases the escrow to you.")
     Card(Modifier.fillMaxWidth()) {
         SelectionContainer {
@@ -94,9 +113,18 @@ private fun BuyerPanel(
     listing: Listing?,
     canSimulate: Boolean,
     onSimulate: (String) -> Unit,
+    onRelease: () -> Unit,
 ) {
     val received = state.received
-    if (received == null) {
+    val released = state.released
+    if (released != null) {
+        Text("Released ✓", style = MaterialTheme.typography.displayMedium, color = MaterialTheme.colorScheme.primary)
+        Text("Confirmed on Solana in ${"%.1f".format(released.confirmMs / 1000.0)} s", style = MaterialTheme.typography.titleMedium)
+        released.message?.let { Text(it) }
+        SelectionContainer {
+            Text("Tx ${released.signature}", style = MaterialTheme.typography.bodySmall)
+        }
+    } else if (received == null) {
         Text("Waiting for tap…", style = MaterialTheme.typography.titleLarge)
         Text("Tap the seller's phone after you've checked the item.")
         if (canSimulate) {
@@ -122,9 +150,13 @@ private fun BuyerPanel(
                 Text("Nonce ${received.nonce ?: "missing"}", style = MaterialTheme.typography.bodySmall)
             }
         }
-        // Phase 4: POST wallet to the URL → unsigned release tx. Phase 6: explainer gates signing.
-        Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) {
-            Text("Review & sign release (Phase 4/6)")
+        // Phase 6 inserts the explainer (rule checks against the on-chain Escrow) before signing.
+        Button(
+            onClick = onRelease,
+            enabled = escrowMatches && received.link != null && !state.releasing,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(if (state.releasing) "Releasing…" else "Sign release · ${listing?.let { formatUnits(it.price) } ?: "?"} tUSDC")
         }
     }
 }

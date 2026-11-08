@@ -53,8 +53,14 @@ class FakeBackendApi(
         }
     }
 
+    override suspend fun createListingTx(seller: String, title: String, price: Long): TxResponse =
+        throw UnsupportedOperationException("Listing needs the real backend (taptrade.fakeBackend=false)")
+
     override suspend fun fundTx(listing: String, buyer: String): TxResponse =
-        throw UnsupportedOperationException("Funding needs the real backend (Phase 4)")
+        throw UnsupportedOperationException("Funding needs the real backend (taptrade.fakeBackend=false)")
+
+    override suspend fun transactionRequest(link: String, account: String): TxResponse =
+        throw UnsupportedOperationException("Release needs the real backend (taptrade.fakeBackend=false)")
 
     override suspend fun handoff(escrow: String, seller: String): HandoffTicket {
         val nonce = UUID.randomUUID().toString().replace("-", "")

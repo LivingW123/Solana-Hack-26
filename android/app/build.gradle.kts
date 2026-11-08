@@ -20,7 +20,9 @@ android {
 
         buildConfigField("String", "BACKEND_URL", "\"${prop("taptrade.backendUrl", "http://10.0.2.2:3000")}\"")
         buildConfigField("boolean", "FAKE_BACKEND", prop("taptrade.fakeBackend", "true"))
-        buildConfigField("String", "PROGRAM_ID", "\"${prop("taptrade.programId", "")}\"")
+        // The app reads chain state (confirmations, escrow websocket) straight from RPC, not via the backend.
+        buildConfigField("String", "RPC_URL", "\"${prop("taptrade.rpcUrl", "https://api.devnet.solana.com")}\"")
+        buildConfigField("String", "PROGRAM_ID","\"${prop("taptrade.programId", "")}\"")
         buildConfigField("String", "TUSDC_MINT", "\"${prop("taptrade.tusdcMint", "")}\"")
     }
 
@@ -61,6 +63,9 @@ dependencies {
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+
+    // Solana JSON-RPC over HTTP + websocket (accountSubscribe for the seller's "Paid ✓")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     // Mobile Wallet Adapter (Solana Mobile)
     implementation("com.solanamobile:mobile-wallet-adapter-clientlib-ktx:2.0.3")

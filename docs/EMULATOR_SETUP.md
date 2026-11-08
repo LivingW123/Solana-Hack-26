@@ -62,10 +62,43 @@ The backend URL is set in `android/gradle.properties` (`taptrade.backendUrl`):
   `-Ptaptrade.backendUrl=http://192.168.1.20:3000`. Allow port 3000 through
   that machine's firewall.
 
-Until Phase 4, `taptrade.fakeBackend=true` serves hardcoded listings.
+`taptrade.fakeBackend=true` serves hardcoded listings (UI only, no trading).
 
-## 5. Phase 3 check
+## 5. Backend on this machine (Phase 4+)
+
+The backend holds no keys, so it can run right next to the emulators. Needs Node 20+.
+
+```bash
+cd backend
+cp .env.example .env      # PROGRAM_ID is filled in; set TUSDC_MINT (see docs/PHASES.md, Phase 2)
+npm install
+npm run dev               # :3000; check http://localhost:3000/health
+```
+
+## 6. Phase 3 check
 
 On **both** emulators: open TapTrade → **Connect wallet** → approve in
 fakewallet → the address shows in the top bar → open a listing → open the
 Handoff screen.
+
+## 7. Phase 4 check: a full trade between the two emulators
+
+The fakewallet accounts must hold devnet SOL + tUSDC (funded from the dev laptop
+with `scripts/`; addresses in docs/PHASES.md).
+
+1. **Seller (5554):** Connect wallet → **Sell** → title + price → approve in
+   fakewallet. The listing appears on both phones (Refresh on the buyer).
+2. **Buyer (5556):** open it → **Fund escrow** → approve. Status → Funded,
+   "confirmed in X s".
+3. **Seller:** open the listing → **Ready for handoff** → **Publish for tap**.
+   The screen shows "● Watching the escrow on-chain".
+4. **Fake tap** (until Phase 5's deep link): copy the URL from the seller's log
+   and type it into the buyer's "paste the seller's URL" field:
+   ```bash
+   adb -s emulator-5554 logcat -d -s DebugTap | tail -1     # publish: solana:http://…
+   # On the buyer: tap the paste field, then (escape & for the device shell):
+   adb -s emulator-5556 shell input text "'solana:http://10.0.2.2:3000/tx/release?escrow=<E>&nonce=<N>'"
+   ```
+   Then **Simulate tap**.
+5. **Buyer:** **Sign release** → approve. Shows "Released ✓ · confirmed in X s".
+6. **Seller:** flips to **Paid ✓** by itself, from the RPC websocket, with no backend involved.

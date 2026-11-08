@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import app.taptrade.data.BackendApi
 import app.taptrade.data.Listing
 import app.taptrade.data.Reputation
+import app.taptrade.data.SolanaRpc
 import app.taptrade.wallet.WalletManager
 import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,6 +28,7 @@ data class ListingDetailUiState(
 class ListingDetailViewModel(
     private val backend: BackendApi,
     private val wallet: WalletManager,
+    private val rpc: SolanaRpc,
     savedState: SavedStateHandle,
 ) : ViewModel() {
     private val pubkey: String = checkNotNull(savedState["pubkey"])
@@ -53,7 +55,7 @@ class ListingDetailViewModel(
         }
     }
 
-    /** Buyer: get unsigned fund_escrow tx from backend → sign in wallet → reload. */
+    /** Buyer: unsigned fund_escrow tx from backend → sign in wallet → confirm on RPC → reload. */
     fun fund(sender: ActivityResultSender) {
         val buyer = wallet.address.value ?: return setError("Connect a wallet first")
         viewModelScope.launch {
@@ -61,9 +63,14 @@ class ListingDetailViewModel(
             runCatching {
                 val tx = backend.fundTx(pubkey, buyer)
                 val bytes = Base64.decode(tx.transaction, Base64.DEFAULT)
-                wallet.signAndSend(sender, bytes).getOrThrow()
-            }.onSuccess { sig ->
-                _state.update { it.copy(busy = false, message = "Escrow funded. Tx $sig") }
+                val sig = wallet.signAndSend(sender, bytes).getOrThrow()
+                val t0 = System.currentTimeMillis()
+                rpc.awaitConfirmed(sig)
+                System.currentTimeMillis() - t0
+            }.onSuccess { ms ->
+                _state.update {
+                    it.copy(busy = false, message = "Escrow funded · confirmed in ${"%.1f".format(ms / 1000.0)} s. Meet the seller to hand off.")
+                }
                 load()
             }.onFailure { e ->
                 _state.update { it.copy(busy = false, error = e.message ?: e.toString()) }

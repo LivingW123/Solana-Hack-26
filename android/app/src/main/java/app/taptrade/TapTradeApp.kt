@@ -4,6 +4,7 @@ import android.app.Application
 import app.taptrade.data.BackendApi
 import app.taptrade.data.FakeBackendApi
 import app.taptrade.data.HttpBackendApi
+import app.taptrade.data.SolanaRpc
 import app.taptrade.tap.DebugTapTransport
 import app.taptrade.tap.NfcTapTransport
 import app.taptrade.tap.TapTransport
@@ -12,6 +13,9 @@ import app.taptrade.wallet.WalletManager
 /** Manual DI: one container per process. Swap implementations here. */
 class AppContainer {
     val wallet = WalletManager()
+
+    /** Direct chain reads: confirmations and the seller's escrow websocket. */
+    val rpc = SolanaRpc(BuildConfig.RPC_URL)
 
     val backend: BackendApi =
         if (BuildConfig.FAKE_BACKEND) {
