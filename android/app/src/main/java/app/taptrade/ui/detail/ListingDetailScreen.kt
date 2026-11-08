@@ -49,7 +49,7 @@ fun ListingDetailScreen(
             TopAppBar(
                 title = { Text("Listing") },
                 navigationIcon = { TextButton(onClick = onBack) { Text("Back") } },
-                actions = { if (address == null) WalletAction(null, state.connecting, { vm.connect(sender) }, {}) },
+                actions = { WalletAction(address, state.connecting, { vm.connect(sender) }, {}) },
             )
         },
     ) { padding ->

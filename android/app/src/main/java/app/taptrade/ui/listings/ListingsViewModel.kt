@@ -80,12 +80,20 @@ class ListingsViewModel(
                 val sig = wallet.signAndSend(sender, Base64.decode(tx.transaction, Base64.DEFAULT)).getOrThrow()
                 val t0 = System.currentTimeMillis()
                 rpc.awaitConfirmed(sig)
-                System.currentTimeMillis() - t0
-            }.onSuccess { ms ->
+                (System.currentTimeMillis() - t0) to tx.listing
+            }.onSuccess { (ms, listing) ->
                 _state.update { it.copy(creating = false, message = "Listed on-chain · confirmed in ${"%.1f".format(ms / 1000.0)} s") }
                 onDone()
-                delay(1_500) // the backend indexer picks the listing up from the ListingCreated event
-                refresh()
+                // Confirmed on our RPC; the backend's index can lag a second or two behind,
+                // so re-read until the new listing shows up.
+                for (attempt in 1..10) {
+                    val l = runCatching { backend.listings() }.getOrNull()
+                    if (l != null) _state.update { it.copy(listings = l) }
+                    if (l != null && (listing == null || l.any { x -> x.pubkey == listing })) break
+                    delay(1_000)
+                }
+                delay(4_000)
+                _state.update { it.copy(message = null) }
             }.onFailure { e ->
                 _state.update { it.copy(creating = false, error = e.message ?: e.toString()) }
             }
