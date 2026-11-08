@@ -38,7 +38,12 @@ import app.taptrade.data.formatUnits
 import app.taptrade.data.shortAddress
 import app.taptrade.data.Explorer
 import app.taptrade.ui.ErrorText
+import app.taptrade.ui.Banner
+import app.taptrade.ui.BrandTitle
 import app.taptrade.ui.ExplorerLink
+import app.taptrade.ui.ItemAvatar
+import app.taptrade.ui.SurfaceCard
+import androidx.compose.foundation.layout.height
 import app.taptrade.ui.LocalActivityResultSender
 import app.taptrade.ui.StatusChip
 import app.taptrade.ui.WalletAction
@@ -75,7 +80,7 @@ fun ListingsScreen(onOpen: (pubkey: String) -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("TapTrade") },
+                title = { BrandTitle() },
                 actions = {
                     WalletAction(address, state.connecting, { vm.connect(sender) }, vm::disconnect)
                 },
@@ -84,19 +89,39 @@ fun ListingsScreen(onOpen: (pubkey: String) -> Unit) {
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             if (state.loading || state.creating) LinearProgressIndicator(Modifier.fillMaxWidth())
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 ErrorText(state.error)
-                state.message?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                state.message?.let { Banner(it) }
                 state.lastTx?.let { ExplorerLink("View transaction on Solana Explorer", Explorer.tx(it)) }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Listings", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                    TextButton(onClick = vm::refresh) { Text("Refresh") }
-                    if (address != null) {
-                        Button(onClick = { selling = true }, enabled = !state.creating) { Text("Sell") }
+                    Column(Modifier.weight(1f)) {
+                        Text("On campus now", style = MaterialTheme.typography.headlineSmall)
+                        Text(
+                            "Paid through a Solana escrow, released with a tap",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
+                    TextButton(onClick = vm::refresh) { Text("Refresh") }
+                }
+                if (address != null) {
+                    Button(
+                        onClick = { selling = true },
+                        enabled = !state.creating,
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                    ) { Text("+  Sell something", style = MaterialTheme.typography.titleMedium) }
                 }
                 if (!state.loading && state.listings.isEmpty()) {
-                    Text("No open listings on-chain yet.", style = MaterialTheme.typography.bodyMedium)
+                    SurfaceCard {
+                        Column(Modifier.padding(24.dp).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("No listings yet", style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                if (address == null) "Connect a wallet to sell or buy." else "Be the first: describe what you're selling.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                 }
             }
             LazyColumn(
@@ -226,18 +251,25 @@ private fun formatDeadline(iso: String): String = runCatching {
 
 @Composable
 private fun ListingRow(listing: Listing, isMine: Boolean, onClick: () -> Unit) {
-    Card(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
-        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(listing.title, style = MaterialTheme.typography.titleMedium)
+    SurfaceCard(Modifier.clickable(onClick = onClick)) {
+        Row(
+            Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            ItemAvatar(listing.title)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(listing.title, style = MaterialTheme.typography.titleMedium, maxLines = 1)
                 Text(
                     if (isMine) "Your listing" else "Seller ${shortAddress(listing.seller)}",
                     style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                StatusChip(listing.status)
             }
             Column(horizontalAlignment = Alignment.End) {
-                Text("${formatUnits(listing.price)} tUSDC", style = MaterialTheme.typography.titleSmall)
-                StatusChip(listing.status)
+                Text(formatUnits(listing.price), style = MaterialTheme.typography.headlineSmall)
+                Text("tUSDC", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }

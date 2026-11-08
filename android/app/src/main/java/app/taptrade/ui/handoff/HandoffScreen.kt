@@ -42,6 +42,20 @@ import app.taptrade.ui.LocalActivityResultSender
 import app.taptrade.ui.ReputationCard
 import app.taptrade.ui.WalletAction
 import app.taptrade.ui.screenViewModel
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import app.taptrade.ui.Banner
+import app.taptrade.ui.CheckLine
+import app.taptrade.ui.ItemAvatar
+import app.taptrade.ui.Pill
+import app.taptrade.ui.StatusHero
+import app.taptrade.ui.SurfaceCard
+import app.taptrade.ui.theme.Brand
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -91,40 +105,67 @@ fun HandoffScreen(onBack: () -> Unit) {
 
 @Composable
 private fun Summary(listing: Listing) {
-    Text(listing.title, style = MaterialTheme.typography.headlineSmall)
-    Text("${formatUnits(listing.price)} tUSDC in escrow", style = MaterialTheme.typography.titleMedium)
+    SurfaceCard {
+        Row(
+            Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            ItemAvatar(listing.title)
+            Column(Modifier.weight(1f)) {
+                Text(listing.title, style = MaterialTheme.typography.titleMedium)
+                Text("in escrow on Solana", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text("${formatUnits(listing.price)} tUSDC", style = MaterialTheme.typography.titleLarge)
+        }
+    }
 }
 
 @Composable
 private fun SellerPanel(state: HandoffUiState, onPublish: () -> Unit, onRegenerate: () -> Unit) {
     when (state.settlement) {
         Settlement.Paid -> {
-            Text("Paid ✓", style = MaterialTheme.typography.displayMedium, color = MaterialTheme.colorScheme.primary)
-            Text("The escrow closed on-chain and the tUSDC is in your wallet. Your phone saw it straight from Solana, not from our server.")
+            StatusHero("✓", "Paid", "The tUSDC is in your wallet", Brand.Green)
+            Banner("Your phone saw the escrow close straight from Solana, not from our server.")
             state.listing?.escrow?.let { ExplorerLink("Escrow history on Solana Explorer", Explorer.address(it)) }
             return
         }
         Settlement.Refunded -> {
-            Text("Refunded", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.error)
-            Text("The deadline passed and the escrow was refunded to the buyer. Your listing is open again.")
+            StatusHero("↺", "Refunded", "The deadline passed; the buyer got their tUSDC back", Brand.Amber)
+            Banner("Your listing is open again.", Brand.Amber)
             return
         }
         null -> Unit
     }
     val url = state.url ?: return
-    Text("Ready for handoff", style = MaterialTheme.typography.titleLarge)
-    Text(
-        if (state.watching) "● Watching the escrow on-chain" else "○ Connecting to Solana…",
-        style = MaterialTheme.typography.labelMedium,
-    )
-    Text("Hand over the item, then let the buyer tap your phone. Their wallet releases the escrow to you.")
-    Card(Modifier.fillMaxWidth()) {
-        SelectionContainer {
-            Text(url, Modifier.padding(16.dp), style = MaterialTheme.typography.bodySmall)
+    SurfaceCard {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Ready for handoff", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                if (state.watching) Pill("● Live on-chain", Brand.Green) else Pill("Connecting…", Brand.TextMuted)
+            }
+            Text(
+                "Hand over the item, then let the buyer tap your phone. Their wallet releases the escrow to you, and this screen flips to Paid by itself.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            SelectionContainer {
+                Text(
+                    url,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(MaterialTheme.shapes.small)
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .padding(10.dp),
+                )
+            }
         }
     }
-    Button(onClick = onPublish, modifier = Modifier.fillMaxWidth()) {
-        Text(if (state.published) "Published · waiting for tap" else "Publish for tap")
+    Button(onClick = onPublish, modifier = Modifier.fillMaxWidth().height(56.dp)) {
+        Text(if (state.published) "Published · waiting for tap" else "Publish for tap", style = MaterialTheme.typography.titleMedium)
     }
     OutlinedButton(onClick = onRegenerate, modifier = Modifier.fillMaxWidth()) {
         Text("New code (expires in 2 min)")
@@ -143,19 +184,31 @@ private fun BuyerPanel(
     val received = state.received
     val released = state.released
     if (released != null) {
-        Text("Released ✓", style = MaterialTheme.typography.displayMedium, color = MaterialTheme.colorScheme.primary)
-        Text("Confirmed on Solana in ${"%.1f".format(released.confirmMs / 1000.0)} s", style = MaterialTheme.typography.titleMedium)
-        released.message?.let { Text(it) }
-        SelectionContainer {
-            Text("Tx ${released.signature}", style = MaterialTheme.typography.bodySmall)
-        }
+        StatusHero("✓", "Released", "Confirmed on Solana in ${"%.1f".format(released.confirmMs / 1000.0)} s", Brand.Green)
+        released.message?.let { Banner(it) }
         ExplorerLink("View release on Solana Explorer", Explorer.tx(released.signature))
     } else if (received == null) {
-        Text("Waiting for tap…", style = MaterialTheme.typography.titleLarge)
-        Text("Tap the seller's phone after you've checked the item.")
+        SurfaceCard {
+            Column(
+                Modifier.padding(24.dp).fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Box(
+                    Modifier.size(72.dp).clip(CircleShape).background(Brand.Purple.copy(alpha = 0.16f)),
+                    contentAlignment = Alignment.Center,
+                ) { Text("⟿", color = Brand.Purple, style = MaterialTheme.typography.headlineMedium) }
+                Text("Waiting for tap", style = MaterialTheme.typography.titleLarge)
+                Text(
+                    "Check the item, then tap the seller's phone.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
         if (canSimulate) {
             var input by rememberSaveable { mutableStateOf("") }
-            Text("Debug: paste the seller's URL to simulate a tap", style = MaterialTheme.typography.labelMedium)
+            Text("Debug: paste the seller's URL to simulate a tap", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedTextField(
                 value = input,
                 onValueChange = { input = it },
@@ -167,18 +220,20 @@ private fun BuyerPanel(
             }
         }
     } else {
-        Text("Tap received", style = MaterialTheme.typography.titleLarge)
         val review = state.review
         when {
-            review == null && state.reviewing -> Text("Checking this release against Solana…")
+            review == null && state.reviewing -> Banner("Tap received · checking this release against Solana…", Brand.Blue)
             review == null -> {
-                Text("Your phone checks this release against Solana before you sign. Connect your wallet if you haven't.")
+                Banner("Tap received. Your phone checks this release against Solana before you sign.", Brand.Blue)
                 OutlinedButton(onClick = onRetry, modifier = Modifier.fillMaxWidth()) { Text("Check release") }
             }
             review.ok -> {
                 ExplainerCard(review)
-                Button(onClick = onSign, enabled = !state.releasing, modifier = Modifier.fillMaxWidth()) {
-                    Text(if (state.releasing) "Releasing…" else "Sign release · ${listing?.let { formatUnits(it.price) } ?: "?"} tUSDC")
+                Button(onClick = onSign, enabled = !state.releasing, modifier = Modifier.fillMaxWidth().height(56.dp)) {
+                    Text(
+                        if (state.releasing) "Waiting for your wallet…" else "Sign release · ${listing?.let { formatUnits(it.price) } ?: "?"} tUSDC",
+                        style = MaterialTheme.typography.titleMedium,
+                    )
                 }
             }
             else -> {
@@ -192,22 +247,23 @@ private fun BuyerPanel(
 /** All rules passed: the sentence (LLM or template) plus the rule list. */
 @Composable
 private fun ExplainerCard(review: Review) {
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("Before you sign", style = MaterialTheme.typography.labelLarge)
-            Text(review.summary ?: "…", style = MaterialTheme.typography.titleMedium)
+    SurfaceCard {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("BEFORE YOU SIGN", style = MaterialTheme.typography.labelSmall, color = Brand.Green)
+            Text(review.summary ?: "…", style = MaterialTheme.typography.titleLarge)
             review.summarySource?.let {
                 Text(
-                    when (it) {
-                        "llm" -> "Sentence written by AI from the checked facts"
-                        else -> "Plain summary (AI unavailable)"
-                    },
+                    if (it == "llm") "Sentence written by AI from the checked facts" else "Plain summary",
                     style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            HorizontalDivider()
-            Text("Checked on your phone against Solana", style = MaterialTheme.typography.labelMedium)
-            review.checks.forEach { CheckRow(it) }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Checked on your phone against Solana", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                Pill("${review.checks.count { it.ok }}/${review.checks.size} ✓", Brand.Green)
+            }
+            review.checks.forEach { CheckLine(it.ok, it.rule, it.detail) }
         }
     }
 }
@@ -215,36 +271,24 @@ private fun ExplainerCard(review: Review) {
 /** At least one rule failed: no signable bytes, reasons first. The AI is not consulted. */
 @Composable
 private fun BlockedCard(review: Review) {
-    Card(
-        Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-    ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("Blocked: don't sign this", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.error)
-            review.checks.filter { !it.ok }.forEach { CheckRow(it) }
+    StatusHero("✕", "Blocked", "Don't sign this", Brand.Red)
+    SurfaceCard {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("WHY", style = MaterialTheme.typography.labelSmall, color = Brand.Red)
+            review.checks.filter { !it.ok }.forEach { CheckLine(false, it.rule, it.detail) }
             review.claimed?.let {
-                Text("The link described itself as: \"$it\". The transaction does something else.", style = MaterialTheme.typography.bodySmall)
+                Banner("The link described itself as \"$it\". The transaction does something else.", Brand.Amber)
             }
+            Text(
+                "No signature possible, and the AI was not consulted.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             if (review.checks.any { it.ok }) {
-                HorizontalDivider()
-                Text("Passed", style = MaterialTheme.typography.labelMedium)
-                review.checks.filter { it.ok }.forEach { CheckRow(it) }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+                Text("PASSED", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                review.checks.filter { it.ok }.forEach { CheckLine(true, it.rule, it.detail) }
             }
-        }
-    }
-}
-
-@Composable
-private fun CheckRow(c: Check) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            if (c.ok) "✓" else "✗",
-            color = if (c.ok) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
-            style = MaterialTheme.typography.titleSmall,
-        )
-        Column {
-            Text(c.rule, style = MaterialTheme.typography.bodyMedium)
-            Text(c.detail, style = MaterialTheme.typography.bodySmall)
         }
     }
 }

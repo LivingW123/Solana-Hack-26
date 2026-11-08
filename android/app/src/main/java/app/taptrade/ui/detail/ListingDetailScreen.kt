@@ -30,7 +30,15 @@ import app.taptrade.ui.Gap
 import app.taptrade.ui.LocalActivityResultSender
 import androidx.compose.material3.OutlinedButton
 import app.taptrade.data.Explorer
+import app.taptrade.ui.Banner
 import app.taptrade.ui.ExplorerLink
+import app.taptrade.ui.ItemAvatar
+import app.taptrade.ui.SurfaceCard
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.ui.Alignment
 import app.taptrade.ui.ReputationCard
 import app.taptrade.ui.StatusChip
 import app.taptrade.ui.WalletAction
@@ -64,7 +72,7 @@ fun ListingDetailScreen(
                 verticalArrangement = Gap,
             ) {
                 ErrorText(state.error)
-                state.message?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                state.message?.let { Banner(it) }
                 state.lastTx?.let { ExplorerLink("View transaction on Solana Explorer", Explorer.tx(it)) }
                 state.listing?.let { listing ->
                     ListingInfo(listing)
@@ -85,13 +93,35 @@ fun ListingDetailScreen(
 
 @Composable
 private fun ListingInfo(listing: Listing) {
-    Text(listing.title, style = MaterialTheme.typography.headlineSmall)
-    Text("${formatUnits(listing.price)} tUSDC", style = MaterialTheme.typography.titleLarge)
-    StatusChip(listing.status)
-    Text("Seller ${shortAddress(listing.seller)}", style = MaterialTheme.typography.bodyMedium)
-    Text("Listing ${shortAddress(listing.pubkey)}", style = MaterialTheme.typography.bodySmall)
-    listing.escrow?.let { Text("Escrow ${shortAddress(it)}", style = MaterialTheme.typography.bodySmall) }
-    ExplorerLink("Listing on-chain", Explorer.address(listing.pubkey))
+    SurfaceCard {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                ItemAvatar(listing.title, size = 56)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(listing.title, style = MaterialTheme.typography.headlineSmall)
+                    StatusChip(listing.status)
+                }
+            }
+            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(formatUnits(listing.price), style = MaterialTheme.typography.displayMedium)
+                Text("tUSDC", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp))
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+            DetailRow("Seller", shortAddress(listing.seller))
+            DetailRow("Listing account", shortAddress(listing.pubkey))
+            listing.escrow?.let { DetailRow("Escrow", shortAddress(it)) }
+            ExplorerLink("Listing on-chain", Explorer.address(listing.pubkey))
+        }
+    }
+}
+
+@Composable
+private fun DetailRow(label: String, value: String) {
+    Row(Modifier.fillMaxWidth()) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+        Text(value, style = MaterialTheme.typography.bodyMedium)
+    }
 }
 
 @Composable
@@ -105,27 +135,30 @@ private fun Actions(
 ) {
     val isSeller = address != null && address == listing.seller
     val isBuyer = address != null && address == listing.buyer
+    val big = Modifier.fillMaxWidth().height(56.dp)
+    val hint: @Composable (String) -> Unit = {
+        Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
     when {
-        address == null ->
-            Text("Connect a wallet (top right) to trade.")
-        listing.status == ListingStatus.Open && !isSeller ->
-            Button(onClick = onFund, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
-                Text("Fund escrow · ${formatUnits(listing.price)} tUSDC")
+        address == null -> hint("Connect a wallet (top right) to trade.")
+        listing.status == ListingStatus.Open && !isSeller -> {
+            Button(onClick = onFund, enabled = !busy, modifier = big) {
+                Text("Fund escrow · ${formatUnits(listing.price)} tUSDC", style = MaterialTheme.typography.titleMedium)
             }
+            hint("Your tUSDC goes into a program vault, not to the seller, until you tap at the handoff. Refundable after the deadline.")
+        }
         listing.status == ListingStatus.Open && isSeller -> {
-            Text("Waiting for a buyer to fund escrow.")
-            OutlinedButton(onClick = onCancel, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
-                Text("Cancel listing")
-            }
+            hint("Waiting for a buyer to fund the escrow.")
+            OutlinedButton(onClick = onCancel, enabled = !busy, modifier = big) { Text("Cancel listing") }
         }
         listing.status == ListingStatus.Funded && isSeller ->
-            Button(onClick = { onHandoff(HandoffRole.Seller) }, modifier = Modifier.fillMaxWidth()) {
-                Text("Ready for handoff")
+            Button(onClick = { onHandoff(HandoffRole.Seller) }, modifier = big) {
+                Text("Ready for handoff", style = MaterialTheme.typography.titleMedium)
             }
         listing.status == ListingStatus.Funded && isBuyer ->
-            Button(onClick = { onHandoff(HandoffRole.Buyer) }, modifier = Modifier.fillMaxWidth()) {
-                Text("Meet seller · wait for tap")
+            Button(onClick = { onHandoff(HandoffRole.Buyer) }, modifier = big) {
+                Text("Meet seller · wait for tap", style = MaterialTheme.typography.titleMedium)
             }
-        else -> Text("No actions available.")
+        else -> hint("Someone else is buying this one.")
     }
 }

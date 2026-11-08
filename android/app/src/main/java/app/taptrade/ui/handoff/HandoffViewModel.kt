@@ -280,13 +280,14 @@ class HandoffViewModel(
         )
     }
 
-    private fun review() {
+    /** [notice] stays visible after the review (e.g. why it re-ran), instead of being cleared. */
+    private fun review(notice: String? = null) {
         val ctx = reviewContext() ?: return
         viewModelScope.launch {
-            _state.update { it.copy(reviewing = true, error = null) }
+            _state.update { it.copy(reviewing = true, error = notice) }
             runCatching { runReview(ctx) }
                 .onSuccess { r ->
-                    _state.update { it.copy(reviewing = false, review = r) }
+                    _state.update { it.copy(reviewing = false, review = r, error = notice) }
                     if (r.ok) summarize(r)
                 }
                 .onFailure { e ->
@@ -341,8 +342,8 @@ class HandoffViewModel(
             }.onFailure { e ->
                 if (isExpiry(e)) {
                     // Never a dead end: say what happened and re-check with a fresh transaction.
-                    _state.update { it.copy(releasing = false, review = null, error = "That request expired before it was sent. Checking again…") }
-                    maybeReview()
+                    _state.update { it.copy(releasing = false, review = null) }
+                    review("Your wallet didn't send it (the request had expired or the wallet was busy). Checked again with a fresh transaction. Tap Sign to retry.")
                 } else {
                     // A dead handoff code invalidates the review: hide the ✓ card and its Sign button
                     // so only the message and "Check release" (after the seller's new tap) remain.
