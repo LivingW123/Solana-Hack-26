@@ -1,6 +1,11 @@
 package app.taptrade.ui.handoff
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.HorizontalDivider
+import app.taptrade.explain.Check
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -53,7 +58,7 @@ fun HandoffScreen(onBack: () -> Unit) {
         },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
-            if (state.loading || state.releasing) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (state.loading || state.reviewing || state.releasing) LinearProgressIndicator(Modifier.fillMaxWidth())
             Column(
                 Modifier.padding(16.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Gap,
@@ -62,7 +67,11 @@ fun HandoffScreen(onBack: () -> Unit) {
                 state.listing?.let { Summary(it) }
                 when (vm.role) {
                     HandoffRole.Seller -> SellerPanel(state, vm::publish, vm::regenerate)
-                    HandoffRole.Buyer -> BuyerPanel(state, state.listing, vm.canSimulateTap, vm::simulateTap) { vm.release(sender) }
+                    HandoffRole.Buyer -> BuyerPanel(
+                        state, state.listing, vm.canSimulateTap, vm::simulateTap,
+                        onSign = { vm.sign(sender) },
+                        onRetry = vm::retryReview,
+                    )
                 }
             }
         }
@@ -116,7 +125,8 @@ private fun BuyerPanel(
     listing: Listing?,
     canSimulate: Boolean,
     onSimulate: (String) -> Unit,
-    onRelease: () -> Unit,
+    onSign: () -> Unit,
+    onRetry: () -> Unit,
 ) {
     val received = state.received
     val released = state.released
@@ -145,21 +155,83 @@ private fun BuyerPanel(
         }
     } else {
         Text("Tap received", style = MaterialTheme.typography.titleLarge)
-        val escrowMatches = listing?.escrow != null && received.escrow == listing.escrow
-        Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp)) {
-                Text("Escrow ${received.escrow?.let(::shortAddress) ?: "missing"}" +
-                    if (escrowMatches) " ✓ matches this listing" else " ✗ does not match this listing")
-                Text("Nonce ${received.nonce ?: "missing"}", style = MaterialTheme.typography.bodySmall)
+        val review = state.review
+        when {
+            review == null && state.reviewing -> Text("Checking this release against Solana…")
+            review == null -> {
+                Text("Connect your wallet to check and sign this release.")
+                OutlinedButton(onClick = onRetry, modifier = Modifier.fillMaxWidth()) { Text("Check release") }
+            }
+            review.ok -> {
+                ExplainerCard(review)
+                Button(onClick = onSign, enabled = !state.releasing, modifier = Modifier.fillMaxWidth()) {
+                    Text(if (state.releasing) "Releasing…" else "Sign release · ${listing?.let { formatUnits(it.price) } ?: "?"} tUSDC")
+                }
+            }
+            else -> {
+                BlockedCard(review)
+                OutlinedButton(onClick = onRetry, modifier = Modifier.fillMaxWidth()) { Text("Check again") }
             }
         }
-        // Phase 6 inserts the explainer (rule checks against the on-chain Escrow) before signing.
-        Button(
-            onClick = onRelease,
-            enabled = escrowMatches && received.link != null && !state.releasing,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text(if (state.releasing) "Releasing…" else "Sign release · ${listing?.let { formatUnits(it.price) } ?: "?"} tUSDC")
+    }
+}
+
+/** All rules passed: the sentence (LLM or template) plus the rule list. */
+@Composable
+private fun ExplainerCard(review: Review) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Before you sign", style = MaterialTheme.typography.labelLarge)
+            Text(review.summary ?: "…", style = MaterialTheme.typography.titleMedium)
+            review.summarySource?.let {
+                Text(
+                    when (it) {
+                        "llm" -> "Sentence written by AI from the checked facts"
+                        else -> "Plain summary (AI unavailable)"
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            }
+            HorizontalDivider()
+            Text("Checked on your phone against Solana", style = MaterialTheme.typography.labelMedium)
+            review.checks.forEach { CheckRow(it) }
+        }
+    }
+}
+
+/** At least one rule failed: no signable bytes, reasons first. The AI is not consulted. */
+@Composable
+private fun BlockedCard(review: Review) {
+    Card(
+        Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Blocked: don't sign this", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.error)
+            review.checks.filter { !it.ok }.forEach { CheckRow(it) }
+            review.claimed?.let {
+                Text("The link described itself as: \"$it\". The transaction does something else.", style = MaterialTheme.typography.bodySmall)
+            }
+            if (review.checks.any { it.ok }) {
+                HorizontalDivider()
+                Text("Passed", style = MaterialTheme.typography.labelMedium)
+                review.checks.filter { it.ok }.forEach { CheckRow(it) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CheckRow(c: Check) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            if (c.ok) "✓" else "✗",
+            color = if (c.ok) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.titleSmall,
+        )
+        Column {
+            Text(c.rule, style = MaterialTheme.typography.bodyMedium)
+            Text(c.detail, style = MaterialTheme.typography.bodySmall)
         }
     }
 }

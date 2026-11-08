@@ -8,7 +8,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import assert from "node:assert/strict";
-import { getAssociatedTokenAddressSync } from "@solana/spl-token";
+import { TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync } from "@solana/spl-token";
 import { Connection, Keypair, PublicKey, VersionedTransaction } from "@solana/web3.js";
 import "../src/config";
 
@@ -54,6 +54,9 @@ async function signAndSend(b64: string, signer: Keypair): Promise<{ sig: string;
   assert.equal(res.value.err, null, `tx ${sig} failed: ${JSON.stringify(res.value.err)}`);
   return { sig, ms: Date.now() - t0 };
 }
+
+/** Escrow layout: 8 discriminator + buyer, seller, listing, mint, vault (32 each) + amount, deadline, bump. */
+const escrowVault = (data: Buffer) => new PublicKey(data.subarray(8 + 32 * 4, 8 + 32 * 5));
 
 const tokenBalance = async (owner: PublicKey) =>
   BigInt((await conn.getTokenAccountBalance(getAssociatedTokenAddressSync(MINT, owner))).value.amount);
@@ -138,9 +141,53 @@ async function main() {
     );
   });
 
+  let tampered: string | undefined;
+  if (health.demoTamper) {
+    step("tampered route (DEMO_TAMPER): same label, hidden SPL Token approve");
+    const evil = await ok("POST", link.replace("/tx/release", "/demo/evil/tx/release"), {
+      account: buyer.publicKey.toBase58(),
+    });
+    const etx = VersionedTransaction.deserialize(Buffer.from(evil.transaction, "base64"));
+    const programs = etx.message.compiledInstructions.map((ix) => etx.message.staticAccountKeys[ix.programIdIndex].toBase58());
+    assert.ok(programs.includes(TOKEN_PROGRAM_ID.toBase58()), "tampered tx carries a Token program instruction");
+    console.log(`  programs: ${programs.join(", ")} · label "${evil.message}"`);
+    tampered = evil.transaction;
+  }
+
   step("buyer taps → release");
   const rel = await ok("POST", link, { account: buyer.publicKey.toBase58() });
   console.log(`  ${rel.message}`);
+
+  step("explainer sentence (/ai/explain) — never consulted when a check failed");
+  const exp = await ok("POST", "/ai/explain", { tx_base64: rel.transaction, checks: [{ rule: "all", ok: true }] });
+  assert.ok(exp.summary.includes("1"), `summary states the amount: ${exp.summary}`);
+  console.log(`  [${exp.source}] ${exp.summary}`);
+  const blocked = await ok("POST", "/ai/explain", { tx_base64: rel.transaction, checks: [{ rule: "x", ok: false }] });
+  assert.equal(blocked.source, "fallback");
+  assert.equal((await http("POST", "/ai/explain", { tx_base64: "nope", checks: [] })).status, 400);
+
+  if (process.env.WRITE_FIXTURE) {
+    // Real devnet transactions + the on-chain Escrow, for the phone's rule-check unit test.
+    const escrowInfo = (await conn.getAccountInfo(escrowKey, "confirmed"))!;
+    const vault = (await conn.getTokenAccountBalance(new PublicKey(escrowVault(escrowInfo.data)))).value.amount;
+    const fixture = {
+      programId: health.programId,
+      backendUrl: "http://10.0.2.2:3000",
+      me: buyer.publicKey.toBase58(),
+      listing: created.listing,
+      price: PRICE,
+      escrow: funded.escrow,
+      escrowOwner: escrowInfo.owner.toBase58(),
+      escrowData: escrowInfo.data.toString("base64"),
+      vaultBalance: Number(vault),
+      releaseTx: rel.transaction,
+      tamperedTx: tampered ?? null,
+    };
+    const out = path.resolve(__dirname, "../../android/app/src/test/resources/release-fixture.json");
+    fs.mkdirSync(path.dirname(out), { recursive: true });
+    fs.writeFileSync(out, JSON.stringify(fixture, null, 2) + "\n");
+    console.log(`  wrote ${path.relative(process.cwd(), out)}`);
+  }
   const tSend = Date.now();
   const sent = await signAndSend(rel.transaction, buyer);
   console.log(`  buyer: confirmed in ${sent.ms} ms (${sent.sig})`);

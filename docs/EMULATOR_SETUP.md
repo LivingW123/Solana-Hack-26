@@ -105,3 +105,24 @@ below takes **two** taps: **AUTHORIZE**, then **SEND TRANSACTION TO CLUSTER**.
    (The debug paste field + **Simulate tap** still works as a fallback.)
 5. **Buyer:** **Sign release** → approve. Shows "Released ✓ · confirmed in X s".
 6. **Seller:** flips to **Paid ✓** by itself, from the RPC websocket, with no backend involved.
+
+## 8. Phase 6 check: the explainer blocks a tampered tap
+
+Start the backend with the demo route: add `DEMO_TAMPER=1` to `backend/.env`
+(or `DEMO_TAMPER=1 npm run dev` in Git Bash) and restart it. Optionally
+set `LLM_API_KEY` in `backend/.env` for the AI sentence; without it you get a
+plain sentence.
+
+Unit test first (no emulator): `cd android && ./gradlew :app:testDebugUnitTest`.
+It runs the rule checks against real devnet transactions.
+
+Then on the emulators, with a funded listing and the seller on **Publish for tap**:
+
+1. `scripts/tap.sh --tamper` → buyer shows **Blocked: don't sign this** with
+   "✗ Calls only the TapTrade program · SPL Token: Approve (lets someone else
+   spend your tokens)". There is no Sign button.
+2. `scripts/tap.sh --wrong-host` → blocked with "✗ Link comes from TapTrade",
+   before the app contacts that host.
+3. `scripts/tap.sh` (the genuine URL; its nonce is still unused) → **Before you
+   sign** card: one sentence ("Releases 2 tUSDC to 7vSe…NpJS for 'Mug'") above
+   every rule ✓ → **Sign release** → seller **Paid ✓**.

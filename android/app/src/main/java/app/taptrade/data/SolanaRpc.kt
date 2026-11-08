@@ -33,6 +33,8 @@ import okhttp3.WebSocketListener
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
+class RpcAccount(val owner: String, val lamports: Long, val data: ByteArray)
+
 /** Account websocket events. */
 sealed interface AccountEvent {
     /** Subscription is live; check current state once to cover anything that happened before it. */
@@ -85,6 +87,33 @@ class SolanaRpc(private val httpUrl: String) {
         }).jsonObject
         return result["value"].let { it != null && it !is JsonNull }
     }
+
+    /** Raw account at `confirmed`, or null if it doesn't exist. */
+    suspend fun getAccount(pubkey: String): RpcAccount? {
+        val value = call("getAccountInfo", buildJsonArray {
+            add(pubkey)
+            addJsonObject {
+                put("encoding", "base64")
+                put("commitment", "confirmed")
+            }
+        }).jsonObject["value"]
+        if (value == null || value is JsonNull) return null
+        val v = value.jsonObject
+        val data = v["data"]!!.jsonArray[0].jsonPrimitive.content
+        return RpcAccount(
+            owner = v["owner"]!!.jsonPrimitive.content,
+            lamports = v["lamports"]!!.jsonPrimitive.long,
+            data = java.util.Base64.getDecoder().decode(data),
+        )
+    }
+
+    /** SPL token account balance in base units, or null if the account doesn't exist. */
+    suspend fun tokenBalance(pubkey: String): Long? = runCatching {
+        call("getTokenAccountBalance", buildJsonArray {
+            add(pubkey)
+            addJsonObject { put("commitment", "confirmed") }
+        }).jsonObject["value"]!!.jsonObject["amount"]!!.jsonPrimitive.content.toLong()
+    }.getOrNull()
 
     /** Poll until [signature] is confirmed; throws if the transaction failed or times out. */
     suspend fun awaitConfirmed(signature: String, timeoutMs: Long = 60_000) {

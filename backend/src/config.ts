@@ -19,7 +19,15 @@ const Env = z.object({
   FUND_DEADLINE_HOURS: z.coerce.number().positive().max(720).default(48),
   /** Background re-index; program-log events also trigger one, so this is only a safety net. */
   INDEX_INTERVAL_MS: z.coerce.number().int().min(1000).default(15000),
+  /** Anthropic API key for the explainer sentence / summaries. Unset → template fallbacks only. */
   LLM_API_KEY: optional(z.string()),
+  /** Fast/cheap tier per CLAUDE.md. */
+  LLM_MODEL: z.string().default("claude-haiku-5-5"),
+  /** Mounts /demo/evil/* (a release tx with a hidden token approval) for the tampered-tap demo. */
+  DEMO_TAMPER: z
+    .enum(["0", "1", "true", "false"])
+    .default("0")
+    .transform((v) => v === "1" || v === "true"),
 });
 
 export const env = Env.parse(process.env);

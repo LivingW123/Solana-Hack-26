@@ -51,6 +51,10 @@ data class TxResponse(
     val escrow: String? = null,
 )
 
+/** `/ai/explain` result. `source` = "llm" or "fallback". Display only; never gates signing. */
+@Serializable
+data class Explanation(val summary: String, val source: String = "fallback")
+
 /** Seller's handoff ticket: Solana Pay URL with a one-time nonce. */
 @Serializable
 data class HandoffTicket(

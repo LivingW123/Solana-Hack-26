@@ -67,6 +67,8 @@ dependencies {
     // Solana JSON-RPC over HTTP + websocket (accountSubscribe for the seller's "Paid ✓")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
+    testImplementation("junit:junit:4.13.2")
+
     // Mobile Wallet Adapter (Solana Mobile)
     implementation("com.solanamobile:mobile-wallet-adapter-clientlib-ktx:2.0.3")
 }

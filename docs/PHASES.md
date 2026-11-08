@@ -56,10 +56,11 @@ Stretch items come only after Phase 9.
 
 **Exit:** `tap.sh` triggers the release flow on the buyer emulator. ✓ Buyer on Handoff → release 0.9 s; buyer on Listings, and app force-stopped (cold start 1.4 s) → opens the right Handoff with the tap received; unknown escrow → "Tap ignored" toast. Seller "Paid ✓" by itself each time.
 
-## Phase 6 — Explainer
-- [ ] Rule checks **in the Android app**, against `Escrow` fetched straight from RPC: program IDs, escrow/vault/seller/mint, amount, no stray approvals/transfers, URL host allowlist
-- [ ] LLM sentence from backend `/ai/explain` (strict JSON, retry once, plain fallback; never gates signing)
-- [ ] App blocks signing when `ok: false`
+## Phase 6 — Explainer  ← *backend verified on devnet; app awaiting emulator run*
+- [~] Rule checks **in the Android app** (`explain/ReleaseChecks.kt`), against `Escrow` fetched straight from RPC: link host allowlist + escrow = listing's (checked before our address is sent anywhere), escrow owned by program and for this listing, buyer = me and sole signer, only TapTrade (+ capped compute budget) instructions, exactly one `release`, all 12 accounts match the chain, amount = escrow = vault = listing price. Decoder handles legacy + v0 (lookup tables rejected). JVM unit test on real devnet fixtures.
+- [x] LLM sentence from backend `/ai/explain`: facts from tx + chain, structured outputs (zod), retry once, must contain the real amount, cached, template fallback; never consulted when a check failed. Verified in `npm run e2e` (fallback path; no key on the dev laptop)
+- [~] App blocks signing when any rule fails (no signable bytes, reasons listed, server's claimed label shown for contrast); signs exactly the reviewed bytes
+- [x] Demo: `DEMO_TAMPER=1` route (release + hidden SPL Token approve, same label) + `scripts/tap.sh --tamper` / `--wrong-host`
 
 **Exit (milestone):** A tampered URL is blocked, with reasons shown.
 

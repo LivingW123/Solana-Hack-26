@@ -3,7 +3,10 @@ package app.taptrade.data
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import app.taptrade.explain.Check
+import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -50,6 +53,22 @@ class HttpBackendApi(private val baseUrl: String) : BackendApi {
             request("POST", "/tx/release/nonce", buildJsonObject {
                 put("escrow", escrow)
                 put("seller", seller)
+            }.toString())
+        )
+
+    override suspend fun explain(txBase64: String, checks: List<Check>): Explanation =
+        json.decodeFromString(
+            request("POST", "/ai/explain", buildJsonObject {
+                put("tx_base64", txBase64)
+                putJsonArray("checks") {
+                    checks.forEach { c ->
+                        addJsonObject {
+                            put("rule", c.rule)
+                            put("ok", c.ok)
+                            put("detail", c.detail.take(500))
+                        }
+                    }
+                }
             }.toString())
         )
 

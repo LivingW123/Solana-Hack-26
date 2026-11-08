@@ -23,4 +23,7 @@ interface BackendApi {
 
     /** Buyer: Solana Pay transaction request — POST [account] to the tapped [link] (https URL, no `solana:`). */
     suspend fun transactionRequest(link: String, account: String): TxResponse
+
+    /** LLM sentence for the explainer card. The phone's rule checks decide; this is display only. */
+    suspend fun explain(txBase64: String, checks: List<app.taptrade.explain.Check>): Explanation
 }

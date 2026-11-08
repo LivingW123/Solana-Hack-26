@@ -30,6 +30,8 @@ npm run sync-idl        # after `anchor build`: copy the IDL + types into src/id
 | GET | `/tx/release` | | Solana Pay `{label, icon}` |
 | POST | `/tx/release?escrow=&nonce=` | `{account}` | Solana Pay `{transaction, message}`; nonce is single-use, 2 min |
 | GET | `/actions.json` | | Actions discovery rules |
+| POST | `/ai/explain` | `{tx_base64, checks[]}` | `{summary, source: "llm" \| "fallback"}`: one sentence for the explainer card |
+| POST | `/demo/evil/tx/release?escrow=` | `{account}` | **Only with `DEMO_TAMPER=1`.** Real release + hidden SPL Token `approve` to an attacker, under the same label |
 
 Notes:
 
@@ -38,6 +40,27 @@ Notes:
   payer. It is simulated before it's returned, so a doomed transaction comes
   back as a 400 with the program's reason.
 - Errors are `{ "error": "…" }`; invalid bodies (zod) return `{ error, issues }`.
+
+## Explainer (`/ai/explain`)
+
+The phone decides whether a release may be signed: it decodes the transaction
+and checks it against the `Escrow` account it fetched from RPC itself
+(android `explain/ReleaseChecks.kt`). This endpoint only writes the sentence
+shown above those checks:
+
+- Facts come from the transaction plus chain state (the escrow amount, seller
+  and listing title), never from the request's prose.
+- The LLM (`LLM_MODEL`, default `claude-haiku-5-5`) is called with structured
+  outputs, validated with zod, retried once, and the result is cached.
+- A sentence that doesn't contain the real amount is rejected. The title is
+  seller-typed text, so this guards against prompt injection.
+- If any check failed, or there's no key, or the LLM errors, you get a plain
+  template sentence instead. The model never sees keys and never builds
+  transactions.
+
+`npm run e2e` exercises it. With `DEMO_TAMPER=1` and `WRITE_FIXTURE=1` it also
+writes `android/app/src/test/resources/release-fixture.json` (real genuine +
+tampered transactions) for the app's rule-check unit test.
 
 ## Indexer
 

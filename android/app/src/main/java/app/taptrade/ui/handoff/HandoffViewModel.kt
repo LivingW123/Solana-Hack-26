@@ -10,6 +10,11 @@ import app.taptrade.data.AccountEvent
 import app.taptrade.data.BackendApi
 import app.taptrade.data.Listing
 import app.taptrade.data.SolanaRpc
+import app.taptrade.explain.ChainState
+import app.taptrade.explain.Check
+import app.taptrade.explain.EscrowAccount
+import app.taptrade.explain.ReleaseChecks
+import app.taptrade.explain.ReleaseContext
 import app.taptrade.tap.DeepLinkTapTransport
 import app.taptrade.tap.TapTransport
 import app.taptrade.wallet.WalletManager
@@ -25,6 +30,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 enum class HandoffRole { Seller, Buyer }
 
@@ -39,6 +45,21 @@ data class ReleaseRequest(val url: String, val link: String?, val escrow: String
 
 data class Released(val signature: String, val confirmMs: Long, val message: String?)
 
+/** Explainer result for one tapped release. Only `ok` reviews carry signable [tx] bytes. */
+data class Review(
+    val checks: List<Check>,
+    val ok: Boolean,
+    /** The label the link's server attached ("Release 20 tUSDC…"). Untrusted; shown for contrast. */
+    val claimed: String? = null,
+    val tx: ByteArray? = null,
+    val txBase64: String? = null,
+    val fallbackSummary: String? = null,
+    /** One sentence; null while it loads (ok reviews only). */
+    val summary: String? = null,
+    /** "llm", "fallback" (backend template) or "local" (backend unreachable). */
+    val summarySource: String? = null,
+)
+
 data class HandoffUiState(
     val loading: Boolean = true,
     val listing: Listing? = null,
@@ -52,6 +73,8 @@ data class HandoffUiState(
     val settlement: Settlement? = null,
     // Buyer
     val received: ReleaseRequest? = null,
+    val reviewing: Boolean = false,
+    val review: Review? = null,
     val releasing: Boolean = false,
     val released: Released? = null,
     val error: String? = null,
@@ -77,7 +100,8 @@ class HandoffViewModel(
     private var watchJob: Job? = null
 
     private val onTap: (String) -> Unit = { url ->
-        _state.update { it.copy(received = parseReleaseRequest(url), released = null, error = null) }
+        _state.update { it.copy(received = parseReleaseRequest(url), review = null, released = null, error = null) }
+        maybeReview()
     }
 
     init {
@@ -103,6 +127,7 @@ class HandoffViewModel(
                     it.copy(loading = false, listing = listing, url = ticket?.url, expiresAt = ticket?.expiresAt)
                 }
                 if (role == HandoffRole.Seller) listing.escrow?.let { watchEscrow(it, listing.pubkey) }
+                maybeReview()
             }.onFailure { e ->
                 _state.update { it.copy(loading = false, error = e.message ?: e.toString()) }
             }
@@ -121,6 +146,7 @@ class HandoffViewModel(
             _state.update { it.copy(connecting = false, error = r.exceptionOrNull()?.message) }
             // Seller needs the address to get a handoff URL.
             if (r.isSuccess && role == HandoffRole.Seller && _state.value.url == null) regenerate()
+            if (r.isSuccess) maybeReview()
         }
     }
 
@@ -184,33 +210,108 @@ class HandoffViewModel(
         if (role == HandoffRole.Buyer) tap.stopListening(onTap)
     }
 
+    /** Start the explainer as soon as we have a tap, the listing and a wallet. */
+    private fun maybeReview() {
+        val s = _state.value
+        if (role != HandoffRole.Buyer || s.received == null || s.listing == null || s.review != null || s.reviewing) return
+        if (wallet.address.value == null) return
+        review()
+    }
+
     /**
-     * Buyer: POST our address to the tapped Solana Pay link → unsigned `release` tx →
-     * sign in wallet → confirm on RPC. Phase 6 inserts the explainer's rule checks
-     * (decode tx, compare with the on-chain Escrow) before the signature.
+     * Explainer. Rule checks run HERE, on the phone, against the Escrow account fetched
+     * straight from RPC; any failure blocks signing and the LLM is not consulted.
+     *  1. Link checks before our address goes anywhere (host allowlist, escrow = listing's).
+     *  2. Fetch the unsigned tx (Solana Pay POST), decode it, compare with the chain.
+     *  3. Only if every rule passes: ask the backend for the one-sentence summary
+     *     (5 s budget, local template on any failure). Signing never waits on it.
      */
-    fun release(sender: ActivityResultSender) {
-        val req = _state.value.received ?: return
-        val buyer = wallet.address.value ?: return _state.update { it.copy(error = "Connect a wallet first") }
+    private fun review() {
+        val s = _state.value
+        val req = s.received ?: return
+        val listing = s.listing ?: return
+        val me = wallet.address.value ?: return
+        val ctx = ReleaseContext(
+            programId = BuildConfig.PROGRAM_ID,
+            trustedBackendUrl = BuildConfig.BACKEND_URL,
+            me = me,
+            listing = listing.pubkey,
+            listingTitle = listing.title,
+            listingPrice = listing.price,
+            listingEscrow = listing.escrow,
+            link = req.link,
+            urlEscrow = req.escrow,
+        )
+        viewModelScope.launch {
+            _state.update { it.copy(reviewing = true, error = null) }
+            val linkChecks = ReleaseChecks.checkLink(ctx)
+            if (linkChecks.any { !it.ok }) {
+                // Blocked before contacting the link: our address never leaves the phone.
+                _state.update { it.copy(reviewing = false, review = Review(linkChecks, ok = false)) }
+                return@launch
+            }
+            runCatching {
+                val tx = backend.transactionRequest(req.link!!, me)
+                val bytes = Base64.decode(tx.transaction, Base64.DEFAULT)
+                val account = rpc.getAccount(listing.escrow!!)
+                val escrow = account?.data?.let(EscrowAccount::decode)
+                val chain = ChainState(account?.owner, account?.data, escrow?.let { rpc.tokenBalance(it.vault) })
+                val checks = linkChecks + ReleaseChecks.checkTx(ctx, bytes, chain)
+                val ok = checks.all { it.ok }
+                Review(
+                    checks = checks,
+                    ok = ok,
+                    claimed = tx.message,
+                    tx = if (ok) bytes else null,
+                    txBase64 = tx.transaction,
+                    fallbackSummary = ReleaseChecks.fallbackSummary(ctx, chain),
+                )
+            }.onSuccess { r ->
+                _state.update { it.copy(reviewing = false, review = r) }
+                if (r.ok) summarize(r)
+            }.onFailure { e ->
+                _state.update { it.copy(reviewing = false, error = e.message ?: e.toString()) }
+            }
+        }
+    }
+
+    private suspend fun summarize(r: Review) {
+        val ex = withTimeoutOrNull(5_000) { runCatching { backend.explain(r.txBase64!!, r.checks) }.getOrNull() }
+        _state.update {
+            it.copy(review = it.review?.copy(
+                summary = ex?.summary ?: r.fallbackSummary,
+                summarySource = ex?.source ?: "local",
+            ))
+        }
+    }
+
+    /** Re-run the explainer (e.g. after a network error or a new code from the seller). */
+    fun retryReview() {
+        _state.update { it.copy(review = null, error = null) }
+        maybeReview()
+    }
+
+    /** Buyer: sign exactly the bytes that passed review → confirm on RPC. */
+    fun sign(sender: ActivityResultSender) {
+        val r = _state.value.review ?: return
+        val tx = r.tx ?: return // blocked reviews have no signable bytes
         viewModelScope.launch {
             _state.update { it.copy(releasing = true, error = null) }
             runCatching {
-                val link = checkNotNull(req.link) { "Not a Solana Pay transaction request" }
-                check(req.escrow != null && req.escrow == _state.value.listing?.escrow) {
-                    "This tap is for a different escrow than this listing"
-                }
-                check(Uri.parse(link).authority == Uri.parse(BuildConfig.BACKEND_URL).authority) {
-                    "Untrusted host ${Uri.parse(link).authority}"
-                }
-                val tx = backend.transactionRequest(link, buyer)
-                val sig = wallet.signAndSend(sender, Base64.decode(tx.transaction, Base64.DEFAULT)).getOrThrow()
+                val sig = wallet.signAndSend(sender, tx).getOrThrow()
                 val t0 = System.currentTimeMillis()
                 rpc.awaitConfirmed(sig)
-                Released(sig, System.currentTimeMillis() - t0, tx.message)
-            }.onSuccess { r ->
-                _state.update { it.copy(releasing = false, released = r) }
+                Released(sig, System.currentTimeMillis() - t0, r.summary ?: r.claimed)
+            }.onSuccess { done ->
+                _state.update { it.copy(releasing = false, released = done) }
             }.onFailure { e ->
-                _state.update { it.copy(releasing = false, error = e.message ?: e.toString()) }
+                val msg = e.message ?: e.toString()
+                _state.update {
+                    it.copy(
+                        releasing = false,
+                        error = if ("blockhash" in msg.lowercase()) "This review expired. Ask the seller for a new code and tap again." else msg,
+                    )
+                }
             }
         }
     }

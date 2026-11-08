@@ -6,7 +6,9 @@ import { HttpError, parsePubkey } from "./errors";
 import { indexer, loadListing } from "./indexer";
 import { checkNonce, consumeNonce, issueNonce } from "./nonces";
 import { getReputation } from "./reputation";
-import { buildCreateListing, buildFund, buildRelease, listingSummary, loadEscrow } from "./tx";
+import { buildCreateListing, buildFund, buildRelease, buildTamperedRelease, listingSummary, loadEscrow } from "./tx";
+import { explain } from "./explain";
+import { llmEnabled } from "./llm";
 
 // ---------------------------------------------------------------------------
 // Request schemas (zod on every body)
@@ -25,6 +27,12 @@ const CreateListingBody = z.object({
   description: z.string().max(2000).optional(),
 });
 const NonceBody = z.object({ escrow: Pubkey, seller: Pubkey });
+const ExplainBody = z.object({
+  tx_base64: z.string().min(1).max(4000),
+  checks: z
+    .array(z.object({ rule: z.string().max(200), ok: z.boolean(), detail: z.string().max(500).optional() }))
+    .max(30),
+});
 
 // ---------------------------------------------------------------------------
 
@@ -76,6 +84,8 @@ app.get(
       slot: await connection.getSlot("confirmed"),
       indexedListings: indexer.size,
       indexedAt: indexer.refreshedAt,
+      llm: llmEnabled ? env.LLM_MODEL : null,
+      demoTamper: env.DEMO_TAMPER,
     });
   }),
 );
@@ -202,6 +212,34 @@ app.post(
     res.json(r);
   }),
 );
+
+// --- AI ------------------------------------------------------------------------------
+
+/** LLM sentence only. The phone runs the rule checks and decides; this never gates signing. */
+app.post(
+  "/ai/explain",
+  ah(async (req, res) => {
+    const body = ExplainBody.parse(req.body);
+    res.json(await explain(body.tx_base64, body.checks));
+  }),
+);
+
+// --- tampered-tap demo (devnet, opt-in) ---------------------------------------------------
+
+if (env.DEMO_TAMPER) {
+  console.warn("[demo] DEMO_TAMPER=1: /demo/evil/tx/release serves a release with a hidden token approval");
+  app.get("/demo/evil/tx/release", (req, res) => {
+    res.json({ label: "TapTrade handoff", icon: iconUrl(req) });
+  });
+  app.post(
+    "/demo/evil/tx/release",
+    ah(async (req, res) => {
+      const { account } = AccountBody.parse(req.body);
+      const escrow = parsePubkey(queryParam(req, "escrow"), "escrow");
+      res.json(await buildTamperedRelease(escrow, parsePubkey(account, "account")));
+    }),
+  );
+}
 
 // --- errors -------------------------------------------------------------------------
 

@@ -59,6 +59,9 @@ class FakeBackendApi(
     override suspend fun fundTx(listing: String, buyer: String): TxResponse =
         throw UnsupportedOperationException("Funding needs the real backend (taptrade.fakeBackend=false)")
 
+    override suspend fun explain(txBase64: String, checks: List<app.taptrade.explain.Check>): Explanation =
+        throw UnsupportedOperationException("Explainer needs the real backend")
+
     override suspend fun transactionRequest(link: String, account: String): TxResponse =
         throw UnsupportedOperationException("Release needs the real backend (taptrade.fakeBackend=false)")
 

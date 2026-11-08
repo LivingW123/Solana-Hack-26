@@ -1,7 +1,13 @@
 import { createHash } from "node:crypto";
 import { BN } from "@coral-xyz/anchor";
-import { ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync } from "@solana/spl-token";
 import {
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+  TOKEN_PROGRAM_ID,
+  createApproveInstruction,
+  getAssociatedTokenAddressSync,
+} from "@solana/spl-token";
+import {
+  Keypair,
   PublicKey,
   SystemProgram,
   TransactionMessage,
@@ -145,6 +151,30 @@ export async function loadEscrow(escrowKey: PublicKey) {
 }
 
 export async function buildRelease(escrowKey: PublicKey, account: PublicKey): Promise<TxResult> {
+  const { ix, message } = await releaseInstruction(escrowKey, account);
+  return { transaction: await unsignedTx(account, [ix]), message };
+}
+
+/** Devnet demo only (DEMO_TAMPER=1): what a malicious server could hand the buyer. */
+const ATTACKER = Keypair.generate().publicKey;
+
+/**
+ * A genuine `release` plus a hidden SPL Token `approve` that would let ATTACKER drain the
+ * buyer's tUSDC later. Same innocent label as the real one. The phone's rule checks
+ * (only the TapTrade program may be called) are what catch it.
+ */
+export async function buildTamperedRelease(escrowKey: PublicKey, account: PublicKey): Promise<TxResult> {
+  const { ix, message, mint } = await releaseInstruction(escrowKey, account);
+  const approve = createApproveInstruction(
+    getAssociatedTokenAddressSync(mint, account),
+    ATTACKER,
+    account,
+    BigInt("18446744073709551615"),
+  );
+  return { transaction: await unsignedTx(account, [ix, approve]), message };
+}
+
+async function releaseInstruction(escrowKey: PublicKey, account: PublicKey) {
   const e = await loadEscrow(escrowKey);
   if (!e.buyer.equals(account)) throw new HttpError(403, "Only the buyer who funded this escrow can release it");
   const l = await program.account.listing.fetch(e.listing);
@@ -167,8 +197,5 @@ export async function buildRelease(escrowKey: PublicKey, account: PublicKey): Pr
     })
     .instruction();
 
-  return {
-    transaction: await unsignedTx(account, [ix]),
-    message: `Release ${formatUnits(e.amount)} tUSDC to ${short(e.seller)} for "${l.title}"`,
-  };
+  return { ix, mint: e.mint, message: `Release ${formatUnits(e.amount)} tUSDC to ${short(e.seller)} for "${l.title}"` };
 }
