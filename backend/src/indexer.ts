@@ -117,11 +117,17 @@ class Indexer {
       }, 750);
     };
 
+    // A websocket reconnect can leave a duplicate subscription that delivers the same
+    // logs twice; skip signatures we've already handled.
+    const seen = new Set<string>();
+
     const parser = new EventParser(programId, new BorshCoder(program.idl));
     connection.onLogs(
       programId,
       (logs, ctx) => {
-        if (logs.err) return;
+        if (logs.err || seen.has(logs.signature)) return;
+        seen.add(logs.signature);
+        if (seen.size > 500) seen.delete(seen.values().next().value!);
         for (const ev of parser.parseLogs(logs.logs)) {
           const entry = { name: ev.name, signature: logs.signature, slot: ctx.slot, data: plain(ev.data) };
           this.events.unshift(entry);

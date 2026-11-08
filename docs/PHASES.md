@@ -38,15 +38,15 @@ Stretch items come only after Phase 9.
 
 **Exit:** Both emulators connect a wallet and show the screens. ✓ fakewallet (seed-phrase accounts — press GENERATE; the default "ephemeral" mode makes a new key per connection) seller `6aMZ8C4DZvgbmtDtvL75MHF84W4Dyx1rm9u2PLJtRA4y` (emulator-5554), buyer `8884mmGFfrXAcdFrTu2ispkB3MgQFfbQ1Jb1bAiyhUNv` (emulator-5556): 0.5 SOL + 1000 tUSDC each
 
-## Phase 4 — Backend tx endpoints + indexer  ← *backend verified on devnet; app awaiting emulator run*
+## Phase 4 — Backend tx endpoints + indexer  ✅ done
 - [x] Node/TS server on :3000 (Express), zod on every request body; holds no keys; every tx simulated before it's returned
 - [x] Unsigned tx builders: `POST /tx/create-listing` (on-chain `title`), `GET/POST /tx/fund` (Solana Pay / Actions shape, `/actions.json`), `POST /tx/release/nonce`, `GET/POST /tx/release` (Solana Pay, single-use 2-min nonces, burned only by the buyer)
 - [x] Indexer: `getProgramAccounts` + program-log events (`/events`, debounced re-index), in-memory, no DB; `GET /listings[/:pubkey]`, `GET /reputation/:wallet`
 - [x] `npm run e2e`: full trade through the API on devnet with local test wallets — create 1.0 s, fund 1.0 s, release 1.9 s; websocket saw the escrow close at release confirmation; wrong wallet / reused nonce / self-buy / bad input rejected
-- [~] App: Sell dialog, Fund, Sign release; seller watches the escrow account over RPC websocket → "Paid ✓" from chain (listing closed = paid, reopened = refunded); confirmation times shown — written, not yet built
-- [~] App: `taptrade.fakeBackend=false`; `SolanaRpc` (OkHttp) for confirmations + websocket; listings are Open/Funded only
+- [x] App: Sell dialog, Fund, Sign release; seller watches the escrow account over RPC websocket → "Paid ✓" from chain (listing closed = paid, reopened = refunded); confirmation times shown
+- [x] App: `taptrade.fakeBackend=false`; `SolanaRpc` (OkHttp) for confirmations + websocket; listings are Open/Funded only
 
-**Exit (milestone):** Two emulators complete a full trade on devnet.
+**Exit (milestone):** Two emulators complete a full trade on devnet. ✓ "Phase4 test mug", 2 tUSDC: listed 1.1 s → funded 1.7 s → released 0.7 s; seller showed "Paid ✓" with no action (~2 s). Txs: create `2i9EKNKa…bPe1xpP`, fund `4Dwr4DA7…ASb51DHZi`, release `5D9HVyoz…FwvFdgm7cY9`
 
 ## Phase 5 — Fake tap
 - [ ] `solana:` intent filter on buyer app → `DeepLinkTapTransport`

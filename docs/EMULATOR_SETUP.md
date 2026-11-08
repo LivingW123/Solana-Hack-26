@@ -84,7 +84,8 @@ Handoff screen.
 ## 7. Phase 4 check: a full trade between the two emulators
 
 The fakewallet accounts must hold devnet SOL + tUSDC (funded from the dev laptop
-with `scripts/`; addresses in docs/PHASES.md).
+with `scripts/`; addresses in docs/PHASES.md). Every "approve in fakewallet"
+below takes **two** taps: **AUTHORIZE**, then **SEND TRANSACTION TO CLUSTER**.
 
 1. **Seller (5554):** Connect wallet → **Sell** → title + price → approve in
    fakewallet. The listing appears on both phones (Refresh on the buyer).
