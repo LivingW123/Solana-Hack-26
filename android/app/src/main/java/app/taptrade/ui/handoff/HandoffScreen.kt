@@ -159,7 +159,7 @@ private fun BuyerPanel(
         when {
             review == null && state.reviewing -> Text("Checking this release against Solana…")
             review == null -> {
-                Text("Connect your wallet to check and sign this release.")
+                Text("Your phone checks this release against Solana before you sign. Connect your wallet if you haven't.")
                 OutlinedButton(onClick = onRetry, modifier = Modifier.fillMaxWidth()) { Text("Check release") }
             }
             review.ok -> {

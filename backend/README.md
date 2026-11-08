@@ -28,7 +28,7 @@ npm run sync-idl        # after `anchor build`: copy the IDL + types into src/id
 | POST | `/tx/fund?listing=` | `{account}` | `{type:"transaction", transaction, message, escrow}` |
 | POST | `/tx/release/nonce` | `{escrow, seller}` | `{url: "solana:…/tx/release?escrow=…&nonce=…", expiresAt}` |
 | GET | `/tx/release` | | Solana Pay `{label, icon}` |
-| POST | `/tx/release?escrow=&nonce=` | `{account}` | Solana Pay `{transaction, message}`; nonce is single-use, 2 min |
+| POST | `/tx/release?escrow=&nonce=` | `{account}` | Solana Pay `{transaction, message}`; nonce is claimed by the first buyer to fetch (others get 409), and that buyer may re-fetch a fresh blockhash until the 2-min expiry |
 | GET | `/actions.json` | | Actions discovery rules |
 | POST | `/ai/explain` | `{tx_base64, checks[]}` | `{summary, source: "llm" \| "fallback"}`: one sentence for the explainer card |
 | POST | `/demo/evil/tx/release?escrow=` | `{account}` | **Only with `DEMO_TAMPER=1`.** Real release + hidden SPL Token `approve` to an attacker, under the same label |

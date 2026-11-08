@@ -40,7 +40,7 @@ Stretch items come only after Phase 9.
 
 ## Phase 4 — Backend tx endpoints + indexer  ✅ done
 - [x] Node/TS server on :3000 (Express), zod on every request body; holds no keys; every tx simulated before it's returned
-- [x] Unsigned tx builders: `POST /tx/create-listing` (on-chain `title`), `GET/POST /tx/fund` (Solana Pay / Actions shape, `/actions.json`), `POST /tx/release/nonce`, `GET/POST /tx/release` (Solana Pay, single-use 2-min nonces, burned only by the buyer)
+- [x] Unsigned tx builders: `POST /tx/create-listing` (on-chain `title`), `GET/POST /tx/fund` (Solana Pay / Actions shape, `/actions.json`), `POST /tx/release/nonce`, `GET/POST /tx/release` (Solana Pay, 2-min nonces claimed by the first buyer to fetch; that buyer may re-fetch a fresh blockhash)
 - [x] Indexer: `getProgramAccounts` + program-log events (`/events`, debounced re-index), in-memory, no DB; `GET /listings[/:pubkey]`, `GET /reputation/:wallet`
 - [x] `npm run e2e`: full trade through the API on devnet with local test wallets — create 1.0 s, fund 1.0 s, release 1.9 s; websocket saw the escrow close at release confirmation; wrong wallet / reused nonce / self-buy / bad input rejected
 - [x] App: Sell dialog, Fund, Sign release; seller watches the escrow account over RPC websocket → "Paid ✓" from chain (listing closed = paid, reopened = refunded); confirmation times shown
@@ -56,13 +56,14 @@ Stretch items come only after Phase 9.
 
 **Exit:** `tap.sh` triggers the release flow on the buyer emulator. ✓ Buyer on Handoff → release 0.9 s; buyer on Listings, and app force-stopped (cold start 1.4 s) → opens the right Handoff with the tap received; unknown escrow → "Tap ignored" toast. Seller "Paid ✓" by itself each time.
 
-## Phase 6 — Explainer  ← *backend verified on devnet; app awaiting emulator run*
-- [~] Rule checks **in the Android app** (`explain/ReleaseChecks.kt`), against `Escrow` fetched straight from RPC: link host allowlist + escrow = listing's (checked before our address is sent anywhere), escrow owned by program and for this listing, buyer = me and sole signer, only TapTrade (+ capped compute budget) instructions, exactly one `release`, all 12 accounts match the chain, amount = escrow = vault = listing price. Decoder handles legacy + v0 (lookup tables rejected). JVM unit test on real devnet fixtures.
+## Phase 6 — Explainer  ✅ done
+- [x] Rule checks **in the Android app** (`explain/ReleaseChecks.kt`), against `Escrow` fetched straight from RPC: link host allowlist + escrow = listing's (checked before our address is sent anywhere), escrow owned by program and for this listing, buyer = me and sole signer, only TapTrade (+ capped compute budget) instructions, exactly one `release`, all 12 accounts match the chain, amount = escrow = vault = listing price. Decoder handles legacy + v0 (lookup tables rejected). JVM unit test on real devnet fixtures.
 - [x] LLM sentence from backend `/ai/explain`: facts from tx + chain, structured outputs (zod), retry once, must contain the real amount, cached, template fallback; never consulted when a check failed. Verified in `npm run e2e` (fallback path; no key on the dev laptop)
-- [~] App blocks signing when any rule fails (no signable bytes, reasons listed, server's claimed label shown for contrast); signs exactly the reviewed bytes
+- [x] App blocks signing when any rule fails (no signable bytes, reasons listed, server's claimed label shown for contrast); signs exactly the reviewed bytes
+- [x] Blockhash expiry during a long review: Sign re-fetches (same code, same buyer) and re-runs every check if the review is > 40 s old; expiry errors auto re-check instead of dead-ending
 - [x] Demo: `DEMO_TAMPER=1` route (release + hidden SPL Token approve, same label) + `scripts/tap.sh --tamper` / `--wrong-host`
 
-**Exit (milestone):** A tampered URL is blocked, with reasons shown.
+**Exit (milestone):** A tampered URL is blocked, with reasons shown. ✓ Unit test 9/9. `tap.sh --tamper` → "Blocked: don't sign this · ✗ Calls only the TapTrade program · SPL Token: Approve…", no Sign button; `--wrong-host` → blocked before contacting the host; genuine tap → 9 rules ✓ + sentence → released in 1.1 s, seller "Paid ✓".
 
 ## Phase 7 — Natural-language listing
 - [ ] `POST /ai/draft-listing` → validated JSON → unsigned `create_listing` tx

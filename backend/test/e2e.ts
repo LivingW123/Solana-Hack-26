@@ -154,8 +154,11 @@ async function main() {
     tampered = evil.transaction;
   }
 
-  step("buyer taps → release");
+  step("buyer taps → release (claims the nonce; may re-fetch a fresh blockhash)");
+  const first = await ok("POST", link, { account: buyer.publicKey.toBase58() });
+  assert.equal((await http("POST", link, { account: seller.publicKey.toBase58() })).status, 409, "claimed by the buyer");
   const rel = await ok("POST", link, { account: buyer.publicKey.toBase58() });
+  assert.ok(first.transaction && rel.transaction);
   console.log(`  ${rel.message}`);
 
   step("explainer sentence (/ai/explain) — never consulted when a check failed");
@@ -194,8 +197,8 @@ async function main() {
   const paidAt = await Promise.race([closed, new Promise<number>((_, rej) => setTimeout(() => rej(new Error("no websocket close")), 30_000))]);
   console.log(`  seller: websocket saw escrow close ${paidAt - tSend} ms after submit → "Paid ✓"`);
 
-  step("nonce is single-use; accounts are closed; tokens + reputation moved");
-  assert.equal((await http("POST", link, { account: buyer.publicKey.toBase58() })).status, 410);
+  step("can't release twice; accounts are closed; tokens + reputation moved");
+  assert.equal((await http("POST", link, { account: buyer.publicKey.toBase58() })).status, 404, "escrow is gone");
   assert.equal(await conn.getAccountInfo(escrowKey), null, "escrow closed");
   assert.equal(await conn.getAccountInfo(new PublicKey(created.listing)), null, "listing closed");
   assert.equal((await http("GET", `/listings/${created.listing}`)).status, 404);

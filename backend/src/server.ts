@@ -4,7 +4,7 @@ import { env } from "./config";
 import { connection, programId, tusdcMint } from "./chain";
 import { HttpError, parsePubkey } from "./errors";
 import { indexer, loadListing } from "./indexer";
-import { checkNonce, consumeNonce, issueNonce } from "./nonces";
+import { checkNonce, claimNonce, issueNonce } from "./nonces";
 import { getReputation } from "./reputation";
 import { buildCreateListing, buildFund, buildRelease, buildTamperedRelease, listingSummary, loadEscrow } from "./tx";
 import { explain } from "./explain";
@@ -204,11 +204,11 @@ app.post(
     const { account } = AccountBody.parse(req.body);
     const escrow = parsePubkey(queryParam(req, "escrow"), "escrow");
     const nonce = queryParam(req, "nonce");
-    checkNonce(nonce, escrow.toBase58());
-    // Build (which verifies the caller is the escrow's buyer) before burning the nonce,
-    // so a wrong-wallet request can't use up the seller's code.
+    checkNonce(nonce, escrow.toBase58(), account);
+    // Build (which verifies the caller is the escrow's buyer) before claiming the nonce,
+    // so a wrong-wallet request can't take the seller's code.
     const r = await buildRelease(escrow, parsePubkey(account, "account"));
-    consumeNonce(nonce);
+    claimNonce(nonce, account);
     res.json(r);
   }),
 );

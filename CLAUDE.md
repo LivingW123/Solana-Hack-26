@@ -114,8 +114,12 @@ in `.env` / app config so it can be swapped for real devnet USDC later.
 6. Seller's phone, subscribed to the escrow account over RPC websocket, sees it
    close and shows "Paid ✓" — no backend in that loop.
 
-Nonces are single-use and expire after 2 minutes (stored in backend memory is
-fine for the hackathon).
+Nonces are single-use per buyer and expire after 2 minutes (stored in backend
+memory is fine for the hackathon). The first wallet that fetches the release
+claims the nonce. That wallet may re-fetch until expiry, because a release's
+blockhash lasts only about 60–90 s and the explainer can take longer. The app
+re-runs every check on the fresh transaction. A double release is impossible
+anyway, since `release` closes the Escrow.
 
 ## Fake tap (no hardware)
 

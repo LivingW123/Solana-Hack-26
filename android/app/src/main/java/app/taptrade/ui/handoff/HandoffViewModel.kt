@@ -58,6 +58,8 @@ data class Review(
     val summary: String? = null,
     /** "llm", "fallback" (backend template) or "local" (backend unreachable). */
     val summarySource: String? = null,
+    /** When [tx] was fetched; its blockhash is only good for ~60–90 s. */
+    val fetchedAt: Long = 0L,
 )
 
 data class HandoffUiState(
@@ -226,12 +228,12 @@ class HandoffViewModel(
      *  3. Only if every rule passes: ask the backend for the one-sentence summary
      *     (5 s budget, local template on any failure). Signing never waits on it.
      */
-    private fun review() {
+    private fun reviewContext(): ReleaseContext? {
         val s = _state.value
-        val req = s.received ?: return
-        val listing = s.listing ?: return
-        val me = wallet.address.value ?: return
-        val ctx = ReleaseContext(
+        val req = s.received ?: return null
+        val listing = s.listing ?: return null
+        val me = wallet.address.value ?: return null
+        return ReleaseContext(
             programId = BuildConfig.PROGRAM_ID,
             trustedBackendUrl = BuildConfig.BACKEND_URL,
             me = me,
@@ -242,36 +244,44 @@ class HandoffViewModel(
             link = req.link,
             urlEscrow = req.escrow,
         )
+    }
+
+    /** Link checks, then (only if they pass) fetch the tx and check it against the chain. */
+    private suspend fun runReview(ctx: ReleaseContext): Review {
+        val linkChecks = ReleaseChecks.checkLink(ctx)
+        // Blocked before contacting the link: our address never leaves the phone.
+        if (linkChecks.any { !it.ok }) return Review(linkChecks, ok = false)
+
+        val tx = backend.transactionRequest(ctx.link!!, ctx.me)
+        val bytes = Base64.decode(tx.transaction, Base64.DEFAULT)
+        val account = rpc.getAccount(ctx.listingEscrow!!)
+        val escrow = account?.data?.let(EscrowAccount::decode)
+        val chain = ChainState(account?.owner, account?.data, escrow?.let { rpc.tokenBalance(it.vault) })
+        val checks = linkChecks + ReleaseChecks.checkTx(ctx, bytes, chain)
+        val ok = checks.all { it.ok }
+        return Review(
+            checks = checks,
+            ok = ok,
+            claimed = tx.message,
+            tx = if (ok) bytes else null,
+            txBase64 = tx.transaction,
+            fallbackSummary = ReleaseChecks.fallbackSummary(ctx, chain),
+            fetchedAt = System.currentTimeMillis(),
+        )
+    }
+
+    private fun review() {
+        val ctx = reviewContext() ?: return
         viewModelScope.launch {
             _state.update { it.copy(reviewing = true, error = null) }
-            val linkChecks = ReleaseChecks.checkLink(ctx)
-            if (linkChecks.any { !it.ok }) {
-                // Blocked before contacting the link: our address never leaves the phone.
-                _state.update { it.copy(reviewing = false, review = Review(linkChecks, ok = false)) }
-                return@launch
-            }
-            runCatching {
-                val tx = backend.transactionRequest(req.link!!, me)
-                val bytes = Base64.decode(tx.transaction, Base64.DEFAULT)
-                val account = rpc.getAccount(listing.escrow!!)
-                val escrow = account?.data?.let(EscrowAccount::decode)
-                val chain = ChainState(account?.owner, account?.data, escrow?.let { rpc.tokenBalance(it.vault) })
-                val checks = linkChecks + ReleaseChecks.checkTx(ctx, bytes, chain)
-                val ok = checks.all { it.ok }
-                Review(
-                    checks = checks,
-                    ok = ok,
-                    claimed = tx.message,
-                    tx = if (ok) bytes else null,
-                    txBase64 = tx.transaction,
-                    fallbackSummary = ReleaseChecks.fallbackSummary(ctx, chain),
-                )
-            }.onSuccess { r ->
-                _state.update { it.copy(reviewing = false, review = r) }
-                if (r.ok) summarize(r)
-            }.onFailure { e ->
-                _state.update { it.copy(reviewing = false, error = e.message ?: e.toString()) }
-            }
+            runCatching { runReview(ctx) }
+                .onSuccess { r ->
+                    _state.update { it.copy(reviewing = false, review = r) }
+                    if (r.ok) summarize(r)
+                }
+                .onFailure { e ->
+                    _state.update { it.copy(reviewing = false, error = e.message ?: e.toString()) }
+                }
         }
     }
 
@@ -291,29 +301,61 @@ class HandoffViewModel(
         maybeReview()
     }
 
-    /** Buyer: sign exactly the bytes that passed review → confirm on RPC. */
+    /**
+     * Buyer: sign exactly bytes that passed review → confirm on RPC.
+     * A release carries a recent blockhash (~60–90 s on devnet). If the buyer spent a
+     * while reading the explainer, fetch a fresh tx for the same code and re-run every
+     * check first; sign only if they all still pass.
+     */
     fun sign(sender: ActivityResultSender) {
-        val r = _state.value.review ?: return
-        val tx = r.tx ?: return // blocked reviews have no signable bytes
+        var r = _state.value.review ?: return
+        if (r.tx == null) return // blocked reviews have no signable bytes
         viewModelScope.launch {
             _state.update { it.copy(releasing = true, error = null) }
             runCatching {
-                val sig = wallet.signAndSend(sender, tx).getOrThrow()
+                if (System.currentTimeMillis() - r.fetchedAt > REVIEW_FRESH_MS) {
+                    val ctx = checkNotNull(reviewContext()) { "Connect a wallet first" }
+                    val fresh = runReview(ctx)
+                    // Keep the sentence already shown; the facts it describes were re-checked.
+                    r = fresh.copy(summary = r.summary, summarySource = r.summarySource)
+                    _state.update { it.copy(review = r) }
+                    if (!r.ok) return@runCatching null
+                }
+                val sig = wallet.signAndSend(sender, r.tx!!).getOrThrow()
                 val t0 = System.currentTimeMillis()
                 rpc.awaitConfirmed(sig)
                 Released(sig, System.currentTimeMillis() - t0, r.summary ?: r.claimed)
             }.onSuccess { done ->
                 _state.update { it.copy(releasing = false, released = done) }
             }.onFailure { e ->
-                val msg = e.message ?: e.toString()
-                _state.update {
-                    it.copy(
-                        releasing = false,
-                        error = if ("blockhash" in msg.lowercase()) "This review expired. Ask the seller for a new code and tap again." else msg,
-                    )
+                if (isExpiry(e)) {
+                    // Never a dead end: say what happened and re-check with a fresh transaction.
+                    _state.update { it.copy(releasing = false, review = null, error = "That request expired before it was sent. Checking again…") }
+                    maybeReview()
+                } else {
+                    _state.update { it.copy(releasing = false, error = friendly(e)) }
                 }
             }
         }
+    }
+
+    private fun isExpiry(e: Throwable): Boolean {
+        val m = (e.message ?: e.toString()).lowercase()
+        return "blockhash" in m || "not submitted" in m || "-4/" in m
+    }
+
+    private fun friendly(e: Throwable): String {
+        val m = e.message ?: e.toString()
+        return when {
+            "declined" in m.lowercase() || "-3/" in m -> "You declined in the wallet. Nothing was sent."
+            "expired" in m.lowercase() && "code" in m.lowercase() -> m
+            else -> m.substringAfterLast("RemoteException: ").ifBlank { m }
+        }
+    }
+
+    private companion object {
+        /** Re-fetch the release before signing if the reviewed one is older than this. */
+        const val REVIEW_FRESH_MS = 40_000L
     }
 
 }
