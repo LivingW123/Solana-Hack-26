@@ -333,7 +333,10 @@ class HandoffViewModel(
                     _state.update { it.copy(releasing = false, review = null, error = "That request expired before it was sent. Checking again…") }
                     maybeReview()
                 } else {
-                    _state.update { it.copy(releasing = false, error = friendly(e)) }
+                    // A dead handoff code invalidates the review: hide the ✓ card and its Sign button
+                    // so only the message and "Check release" (after the seller's new tap) remain.
+                    val codeGone = "handoff code" in (e.message ?: "").lowercase()
+                    _state.update { it.copy(releasing = false, error = friendly(e), review = if (codeGone) null else it.review) }
                 }
             }
         }
