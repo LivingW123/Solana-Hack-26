@@ -2,6 +2,11 @@ package app.taptrade.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -139,7 +144,23 @@ fun StatusHero(symbol: String, title: String, subtitle: String?, color: Color) {
                 .border(2.dp, color, CircleShape),
             contentAlignment = Alignment.Center,
         ) {
-            Text(symbol, color = color, fontSize = 48.sp, fontWeight = FontWeight.ExtraBold)
+            // Vector marks so ✓ and ✕ match in weight; other symbols fall back to text.
+            when (symbol) {
+                "✓", "✕" -> Canvas(Modifier.size(44.dp)) {
+                    val w = size.width
+                    val stroke = Stroke(width = w * 0.13f, cap = StrokeCap.Round, join = StrokeJoin.Round)
+                    val path = Path().apply {
+                        if (symbol == "✓") {
+                            moveTo(w * 0.14f, w * 0.54f); lineTo(w * 0.40f, w * 0.78f); lineTo(w * 0.86f, w * 0.24f)
+                        } else {
+                            moveTo(w * 0.2f, w * 0.2f); lineTo(w * 0.8f, w * 0.8f)
+                            moveTo(w * 0.8f, w * 0.2f); lineTo(w * 0.2f, w * 0.8f)
+                        }
+                    }
+                    drawPath(path, color, style = stroke)
+                }
+                else -> Text(symbol, color = color, fontSize = 48.sp, fontWeight = FontWeight.ExtraBold)
+            }
         }
         Spacer(Modifier.height(14.dp))
         Text(title, style = MaterialTheme.typography.displayMedium, color = color, textAlign = TextAlign.Center)

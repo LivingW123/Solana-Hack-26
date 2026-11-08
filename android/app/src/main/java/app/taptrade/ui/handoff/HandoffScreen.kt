@@ -58,6 +58,7 @@ import app.taptrade.ui.SurfaceCard
 import app.taptrade.ui.theme.Brand
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Surface
+import androidx.compose.foundation.layout.navigationBarsPadding
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -83,7 +84,7 @@ fun HandoffScreen(onBack: () -> Unit) {
                     Button(
                         onClick = { vm.sign(sender) },
                         enabled = !state.releasing,
-                        modifier = Modifier.fillMaxWidth().padding(16.dp).height(56.dp),
+                        modifier = Modifier.navigationBarsPadding().fillMaxWidth().padding(16.dp).height(56.dp),
                     ) {
                         Text(
                             if (state.releasing) "Waiting for your wallet…"

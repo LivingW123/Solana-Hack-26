@@ -42,7 +42,10 @@ import app.taptrade.ui.Banner
 import app.taptrade.ui.Pill
 import app.taptrade.ui.theme.Brand
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarDuration
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
@@ -100,13 +103,24 @@ fun ListingsScreen(onOpen: (pubkey: String) -> Unit) {
             TopAppBar(
                 title = { BrandTitle() },
                 actions = {
-                    TextButton(onClick = vm::refresh) { Text("↻", style = MaterialTheme.typography.titleLarge) }
+                    TextButton(onClick = vm::refresh, modifier = Modifier.semantics { contentDescription = "Refresh" }) {
+                        Text("↻", style = MaterialTheme.typography.titleLarge)
+                    }
                     WalletAction(address, state.connecting, { vm.connect(sender) }, vm::disconnect)
                 },
             )
         },
         // "Listed on-chain" as a snackbar overlay: the list doesn't jump when it appears or goes.
-        snackbarHost = { SnackbarHost(snackbar) },
+        snackbarHost = {
+            SnackbarHost(snackbar) { data ->
+                Snackbar(
+                    data,
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    contentColor = Brand.Green,
+                    actionColor = Brand.Blue,
+                )
+            }
+        },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             if (state.loading || state.creating) LinearProgressIndicator(Modifier.fillMaxWidth())
