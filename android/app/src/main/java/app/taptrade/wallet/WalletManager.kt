@@ -56,6 +56,9 @@ class WalletManager {
     }
 
     fun disconnect() {
+        // Drop the MWA auth token too; otherwise the next connect() silently
+        // reauthorizes the previous session and returns the old account.
+        adapter.authToken = null
         _address.value = null
     }
 }
