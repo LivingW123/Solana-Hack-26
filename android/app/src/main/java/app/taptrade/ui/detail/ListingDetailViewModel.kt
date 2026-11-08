@@ -6,10 +6,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.taptrade.data.BackendApi
 import app.taptrade.data.Listing
+import app.taptrade.data.ListingStatus
 import app.taptrade.data.Reputation
 import app.taptrade.data.SolanaRpc
 import app.taptrade.wallet.WalletManager
 import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,6 +23,7 @@ data class ListingDetailUiState(
     val listing: Listing? = null,
     val sellerRep: Reputation? = null,
     val busy: Boolean = false,
+    val connecting: Boolean = false,
     val message: String? = null,
     val error: String? = null,
 )
@@ -66,15 +69,40 @@ class ListingDetailViewModel(
                 val sig = wallet.signAndSend(sender, bytes).getOrThrow()
                 val t0 = System.currentTimeMillis()
                 rpc.awaitConfirmed(sig)
-                System.currentTimeMillis() - t0
-            }.onSuccess { ms ->
+                (System.currentTimeMillis() - t0) to tx.escrow
+            }.onSuccess { (ms, escrow) ->
+                // Confirmed on-chain, so show Funded now (hides the Fund button) instead of
+                // waiting for the backend's RPC node to catch up; then re-read until it agrees.
                 _state.update {
-                    it.copy(busy = false, message = "Escrow funded · confirmed in ${"%.1f".format(ms / 1000.0)} s. Meet the seller to hand off.")
+                    it.copy(
+                        busy = false,
+                        listing = it.listing?.copy(status = ListingStatus.Funded, buyer = buyer, escrow = escrow ?: it.listing?.escrow),
+                        message = "Escrow funded · confirmed in ${"%.1f".format(ms / 1000.0)} s. Meet the seller to hand off.",
+                    )
                 }
-                load()
+                reloadUntilFunded()
             }.onFailure { e ->
                 _state.update { it.copy(busy = false, error = e.message ?: e.toString()) }
             }
+        }
+    }
+
+    private suspend fun reloadUntilFunded() {
+        repeat(8) {
+            val l = runCatching { backend.listing(pubkey) }.getOrNull()
+            if (l != null && l.status == ListingStatus.Funded) {
+                _state.update { it.copy(listing = l) }
+                return
+            }
+            delay(1_000)
+        }
+    }
+
+    fun connect(sender: ActivityResultSender) {
+        viewModelScope.launch {
+            _state.update { it.copy(connecting = true, error = null) }
+            val r = wallet.connect(sender)
+            _state.update { it.copy(connecting = false, error = r.exceptionOrNull()?.message) }
         }
     }
 

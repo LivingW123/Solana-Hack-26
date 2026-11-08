@@ -48,12 +48,13 @@ Stretch items come only after Phase 9.
 
 **Exit (milestone):** Two emulators complete a full trade on devnet. ✓ "Phase4 test mug", 2 tUSDC: listed 1.1 s → funded 1.7 s → released 0.7 s; seller showed "Paid ✓" with no action (~2 s). Txs: create `2i9EKNKa…bPe1xpP`, fund `4Dwr4DA7…ASb51DHZi`, release `5D9HVyoz…FwvFdgm7cY9`
 
-## Phase 5 — Fake tap  ← *code written; awaiting emulator run*
-- [~] `solana:` intent filter on MainActivity (singleTask, `onNewIntent`) → `DeepLinkTapTransport` (holds the tap if no Handoff screen is listening; app navigates to the listing with that escrow)
-- [~] `scripts/tap.sh` (no args = seller's last published URL from logcat; `<escrow> <nonce>`; `--url` for tampered URLs)
+## Phase 5 — Fake tap  ✅ done
+- [x] `solana:` intent filter on MainActivity (singleTask, `onNewIntent`) → `DeepLinkTapTransport` (holds the tap if no Handoff screen is listening; app navigates to the listing with that escrow)
+- [x] `scripts/tap.sh` (no args = seller's last published URL from logcat; `<escrow> <nonce>`; `--url` for tampered URLs)
 - [ ] (optional) relay: `/tap/publish`, `/tap/latest`: skipped, the deep link covers the demo
+- [x] Follow-ups from the run: Connect button on Handoff/Detail (a tap that cold-starts the app lands disconnected), Fund shows Funded as soon as it's confirmed, Listings re-reads on resume
 
-**Exit:** `tap.sh` triggers the release flow on the buyer emulator.
+**Exit:** `tap.sh` triggers the release flow on the buyer emulator. ✓ Buyer on Handoff → release 0.9 s; buyer on Listings, and app force-stopped (cold start 1.4 s) → opens the right Handoff with the tap received; unknown escrow → "Tap ignored" toast. Seller "Paid ✓" by itself each time.
 
 ## Phase 6 — Explainer
 - [ ] Rule checks **in the Android app**, against `Escrow` fetched straight from RPC: program IDs, escrow/vault/seller/mint, amount, no stray approvals/transfers, URL host allowlist

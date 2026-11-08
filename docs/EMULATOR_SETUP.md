@@ -75,6 +75,11 @@ npm install
 npm run dev               # :3000; check http://localhost:3000/health
 ```
 
+Run it in its own terminal and stop it with Ctrl+C. On Windows, killing the parent
+shell can leave `node` running on :3000 (the next start fails with `EADDRINUSE`
+and the old code keeps serving). Fix: `taskkill /F /IM node.exe`, or find the PID
+with `netstat -ano | findstr :3000`.
+
 ## 6. Phase 3 check
 
 On **both** emulators: open TapTrade → **Connect wallet** → approve in

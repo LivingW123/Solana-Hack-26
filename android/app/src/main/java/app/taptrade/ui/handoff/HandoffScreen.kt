@@ -32,6 +32,7 @@ import app.taptrade.data.shortAddress
 import app.taptrade.ui.ErrorText
 import app.taptrade.ui.Gap
 import app.taptrade.ui.LocalActivityResultSender
+import app.taptrade.ui.WalletAction
 import app.taptrade.ui.screenViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -40,12 +41,14 @@ fun HandoffScreen(onBack: () -> Unit) {
     val vm = screenViewModel { c, s -> HandoffViewModel(c.backend, c.wallet, c.rpc, c.tapTransport, s) }
     val state by vm.state.collectAsStateWithLifecycle()
     val sender = LocalActivityResultSender.current
+    val address by vm.address.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(if (vm.role == HandoffRole.Seller) "Handoff · seller" else "Handoff · buyer") },
                 navigationIcon = { TextButton(onClick = onBack) { Text("Back") } },
+                actions = { if (address == null) WalletAction(null, state.connecting, { vm.connect(sender) }, {}) },
             )
         },
     ) { padding ->

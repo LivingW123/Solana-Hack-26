@@ -42,6 +42,7 @@ data class Released(val signature: String, val confirmMs: Long, val message: Str
 data class HandoffUiState(
     val loading: Boolean = true,
     val listing: Listing? = null,
+    val connecting: Boolean = false,
     // Seller
     val url: String? = null,
     val expiresAt: Long? = null,
@@ -71,6 +72,7 @@ class HandoffViewModel(
 
     private val _state = MutableStateFlow(HandoffUiState())
     val state: StateFlow<HandoffUiState> = _state.asStateFlow()
+    val address: StateFlow<String?> = wallet.address
 
     private var watchJob: Job? = null
 
@@ -104,6 +106,21 @@ class HandoffViewModel(
             }.onFailure { e ->
                 _state.update { it.copy(loading = false, error = e.message ?: e.toString()) }
             }
+        }
+    }
+
+    /**
+     * Wallet sessions live in memory, so a tap that cold-starts the app lands here
+     * disconnected. Connect in place; the held tap stays on screen (its nonce is only
+     * spent when the release tx is requested).
+     */
+    fun connect(sender: ActivityResultSender) {
+        viewModelScope.launch {
+            _state.update { it.copy(connecting = true, error = null) }
+            val r = wallet.connect(sender)
+            _state.update { it.copy(connecting = false, error = r.exceptionOrNull()?.message) }
+            // Seller needs the address to get a handoff URL.
+            if (r.isSuccess && role == HandoffRole.Seller && _state.value.url == null) regenerate()
         }
     }
 

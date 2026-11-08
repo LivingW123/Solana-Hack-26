@@ -29,6 +29,7 @@ import app.taptrade.ui.ErrorText
 import app.taptrade.ui.Gap
 import app.taptrade.ui.LocalActivityResultSender
 import app.taptrade.ui.StatusChip
+import app.taptrade.ui.WalletAction
 import app.taptrade.ui.handoff.HandoffRole
 import app.taptrade.ui.screenViewModel
 
@@ -48,6 +49,7 @@ fun ListingDetailScreen(
             TopAppBar(
                 title = { Text("Listing") },
                 navigationIcon = { TextButton(onClick = onBack) { Text("Back") } },
+                actions = { if (address == null) WalletAction(null, state.connecting, { vm.connect(sender) }, {}) },
             )
         },
     ) { padding ->
@@ -113,7 +115,7 @@ private fun Actions(
     val isBuyer = address != null && address == listing.buyer
     when {
         address == null ->
-            Text("Connect a wallet (top of the Listings screen) to trade.")
+            Text("Connect a wallet (top right) to trade.")
         listing.status == ListingStatus.Open && !isSeller ->
             Button(onClick = onFund, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
                 Text("Fund escrow · ${formatUnits(listing.price)} tUSDC")

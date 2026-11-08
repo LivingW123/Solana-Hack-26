@@ -30,6 +30,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.taptrade.data.Listing
 import app.taptrade.data.formatUnits
@@ -48,6 +50,10 @@ fun ListingsScreen(onOpen: (pubkey: String) -> Unit) {
     val address by vm.address.collectAsStateWithLifecycle()
     val sender = LocalActivityResultSender.current
     var selling by rememberSaveable { mutableStateOf(false) }
+
+    // Coming back from a trade (Back, or app resumed): settled listings are closed
+    // accounts now, so re-read instead of showing what was true before.
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { vm.refresh() }
 
     if (selling) {
         SellDialog(

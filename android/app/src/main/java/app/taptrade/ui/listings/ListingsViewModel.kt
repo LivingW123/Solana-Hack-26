@@ -14,6 +14,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -36,8 +37,9 @@ class ListingsViewModel(
     val address: StateFlow<String?> = wallet.address
 
     init {
-        // Reload when the wallet changes ("yours" vs others).
-        viewModelScope.launch { wallet.address.collect { refresh() } }
+        // Reload when the wallet changes ("yours" vs others). The first load comes from
+        // the screen's ON_RESUME, so skip the initial value here.
+        viewModelScope.launch { wallet.address.drop(1).collect { refresh() } }
     }
 
     fun refresh() {
