@@ -56,6 +56,8 @@ import app.taptrade.ui.Pill
 import app.taptrade.ui.StatusHero
 import app.taptrade.ui.SurfaceCard
 import app.taptrade.ui.theme.Brand
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Surface
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -73,6 +75,25 @@ fun HandoffScreen(onBack: () -> Unit) {
                 actions = { WalletAction(address, state.connecting, { vm.connect(sender) }, {}) },
             )
         },
+        // Sticky Sign bar: always fully visible above the scrolling explainer.
+        bottomBar = {
+            val review = state.review
+            if (vm.role == HandoffRole.Buyer && review?.ok == true && state.released == null) {
+                Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
+                    Button(
+                        onClick = { vm.sign(sender) },
+                        enabled = !state.releasing,
+                        modifier = Modifier.fillMaxWidth().padding(16.dp).height(56.dp),
+                    ) {
+                        Text(
+                            if (state.releasing) "Waiting for your wallet…"
+                            else "Sign release · ${state.listing?.let { formatUnits(it.price) } ?: "?"} tUSDC",
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                    }
+                }
+            }
+        },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             if (state.loading || state.reviewing || state.releasing) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -81,7 +102,17 @@ fun HandoffScreen(onBack: () -> Unit) {
                 verticalArrangement = Gap,
             ) {
                 ErrorText(state.error)
-                state.listing?.let { Summary(it) }
+                state.listing?.let {
+                    Summary(
+                        it,
+                        when {
+                            state.settlement == Settlement.Paid -> "Paid · settled on Solana"
+                            state.settlement == Settlement.Refunded -> "Refunded · settled on Solana"
+                            state.released != null -> "Released · settled on Solana"
+                            else -> "in escrow on Solana"
+                        },
+                    )
+                }
                 when (vm.role) {
                     HandoffRole.Seller -> SellerPanel(state, vm::publish, vm::regenerate)
                     HandoffRole.Buyer -> BuyerPanel(
@@ -104,7 +135,7 @@ fun HandoffScreen(onBack: () -> Unit) {
 }
 
 @Composable
-private fun Summary(listing: Listing) {
+private fun Summary(listing: Listing, subtitle: String) {
     SurfaceCard {
         Row(
             Modifier.padding(16.dp),
@@ -114,7 +145,7 @@ private fun Summary(listing: Listing) {
             ItemAvatar(listing.title)
             Column(Modifier.weight(1f)) {
                 Text(listing.title, style = MaterialTheme.typography.titleMedium)
-                Text("in escrow on Solana", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Text("${formatUnits(listing.price)} tUSDC", style = MaterialTheme.typography.titleLarge)
         }
@@ -149,23 +180,18 @@ private fun SellerPanel(state: HandoffUiState, onPublish: () -> Unit, onRegenera
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            SelectionContainer {
-                Text(
-                    url,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(MaterialTheme.shapes.small)
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                        .padding(10.dp),
-                )
-            }
+            Pill("One-time handoff code ready · valid 2 min", Brand.Blue)
         }
     }
-    Button(onClick = onPublish, modifier = Modifier.fillMaxWidth().height(56.dp)) {
-        Text(if (state.published) "Published · waiting for tap" else "Publish for tap", style = MaterialTheme.typography.titleMedium)
+    if (state.published) {
+        // A state, not an action: tonal so it doesn't look like the next thing to press.
+        FilledTonalButton(onClick = onPublish, modifier = Modifier.fillMaxWidth().height(56.dp)) {
+            Text("✓ Published · waiting for the buyer's tap", style = MaterialTheme.typography.titleMedium)
+        }
+    } else {
+        Button(onClick = onPublish, modifier = Modifier.fillMaxWidth().height(56.dp)) {
+            Text("Publish for tap", style = MaterialTheme.typography.titleMedium)
+        }
     }
     OutlinedButton(onClick = onRegenerate, modifier = Modifier.fillMaxWidth()) {
         Text("New code (expires in 2 min)")
@@ -227,15 +253,7 @@ private fun BuyerPanel(
                 Banner("Tap received. Your phone checks this release against Solana before you sign.", Brand.Blue)
                 OutlinedButton(onClick = onRetry, modifier = Modifier.fillMaxWidth()) { Text("Check release") }
             }
-            review.ok -> {
-                ExplainerCard(review)
-                Button(onClick = onSign, enabled = !state.releasing, modifier = Modifier.fillMaxWidth().height(56.dp)) {
-                    Text(
-                        if (state.releasing) "Waiting for your wallet…" else "Sign release · ${listing?.let { formatUnits(it.price) } ?: "?"} tUSDC",
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                }
-            }
+            review.ok -> ExplainerCard(review) // Sign lives in the sticky bottom bar
             else -> {
                 BlockedCard(review)
                 OutlinedButton(onClick = onRetry, modifier = Modifier.fillMaxWidth()) { Text("Check again") }
@@ -250,7 +268,8 @@ private fun ExplainerCard(review: Review) {
     SurfaceCard {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("BEFORE YOU SIGN", style = MaterialTheme.typography.labelSmall, color = Brand.Green)
-            Text(review.summary ?: "…", style = MaterialTheme.typography.titleLarge)
+            // Word joiners keep a short address ("6aMZ…RA4y") from wrapping at the ellipsis.
+            Text(review.summary?.replace("…", "⁠…⁠") ?: "…", style = MaterialTheme.typography.titleMedium)
             review.summarySource?.let {
                 Text(
                     if (it == "llm") "Sentence written by AI from the checked facts" else "Plain summary",
@@ -268,6 +287,21 @@ private fun ExplainerCard(review: Review) {
     }
 }
 
+/** Rule names are phrased as what must be true; a failed rule reads better as what went wrong. */
+private fun failTitle(rule: String): String = when {
+    rule == "Link comes from TapTrade" -> "Link isn't from TapTrade"
+    rule == "Tap is for this listing's escrow" -> "Tap is for a different escrow"
+    rule == "Escrow is live on Solana" -> "Escrow isn't valid on Solana"
+    rule == "You funded this escrow" -> "You didn't fund this escrow"
+    rule == "Only your wallet signs" -> "Someone else would sign"
+    rule == "Calls only the TapTrade program" -> "Calls a program it shouldn't"
+    rule == "Action is release" -> "It isn't a release"
+    rule == "Escrow, vault, seller and mint match the chain" -> "Accounts don't match the chain"
+    rule.startsWith("Amount is") -> "Amount doesn't match"
+    rule == "Transaction can be read" -> "Transaction can't be verified"
+    else -> rule
+}
+
 /** At least one rule failed: no signable bytes, reasons first. The AI is not consulted. */
 @Composable
 private fun BlockedCard(review: Review) {
@@ -275,9 +309,9 @@ private fun BlockedCard(review: Review) {
     SurfaceCard {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("WHY", style = MaterialTheme.typography.labelSmall, color = Brand.Red)
-            review.checks.filter { !it.ok }.forEach { CheckLine(false, it.rule, it.detail) }
+            review.checks.filter { !it.ok }.forEach { CheckLine(false, failTitle(it.rule), it.detail) }
             review.claimed?.let {
-                Banner("The link described itself as \"$it\". The transaction does something else.", Brand.Amber)
+                Banner("The link described itself as: $it. The transaction does something else.", Brand.Amber)
             }
             Text(
                 "No signature possible, and the AI was not consulted.",

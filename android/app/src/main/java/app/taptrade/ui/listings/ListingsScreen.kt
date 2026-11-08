@@ -39,6 +39,16 @@ import app.taptrade.data.shortAddress
 import app.taptrade.data.Explorer
 import app.taptrade.ui.ErrorText
 import app.taptrade.ui.Banner
+import app.taptrade.ui.Pill
+import app.taptrade.ui.theme.Brand
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalUriHandler
 import app.taptrade.ui.BrandTitle
 import app.taptrade.ui.ExplorerLink
 import app.taptrade.ui.ItemAvatar
@@ -57,6 +67,14 @@ fun ListingsScreen(onOpen: (pubkey: String) -> Unit) {
     val address by vm.address.collectAsStateWithLifecycle()
     val sender = LocalActivityResultSender.current
     var selling by rememberSaveable { mutableStateOf(false) }
+    val snackbar = remember { SnackbarHostState() }
+    val uri = LocalUriHandler.current
+    LaunchedEffect(state.message, state.lastTx) {
+        val msg = state.message ?: return@LaunchedEffect
+        val tx = state.lastTx
+        val result = snackbar.showSnackbar(msg, actionLabel = if (tx != null) "View tx ↗" else null, duration = SnackbarDuration.Long)
+        if (result == SnackbarResult.ActionPerformed && tx != null) runCatching { uri.openUri(Explorer.tx(tx)) }
+    }
 
     // Coming back from a trade (Back, or app resumed): settled listings are closed
     // accounts now, so re-read instead of showing what was true before.
@@ -82,27 +100,25 @@ fun ListingsScreen(onOpen: (pubkey: String) -> Unit) {
             TopAppBar(
                 title = { BrandTitle() },
                 actions = {
+                    TextButton(onClick = vm::refresh) { Text("↻", style = MaterialTheme.typography.titleLarge) }
                     WalletAction(address, state.connecting, { vm.connect(sender) }, vm::disconnect)
                 },
             )
         },
+        // "Listed on-chain" as a snackbar overlay: the list doesn't jump when it appears or goes.
+        snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             if (state.loading || state.creating) LinearProgressIndicator(Modifier.fillMaxWidth())
             Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 ErrorText(state.error)
-                state.message?.let { Banner(it) }
-                state.lastTx?.let { ExplorerLink("View transaction on Solana Explorer", Explorer.tx(it)) }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("On campus now", style = MaterialTheme.typography.headlineSmall)
-                        Text(
-                            "Paid through a Solana escrow, released with a tap",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    TextButton(onClick = vm::refresh) { Text("Refresh") }
+                Column {
+                    Text("On campus now", style = MaterialTheme.typography.headlineSmall)
+                    Text(
+                        "Paid through a Solana escrow, released with a tap",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
                 if (address != null) {
                     Button(
@@ -166,15 +182,25 @@ private fun SellDialog(
                 ErrorText(state.error)
                 when {
                     draft != null -> {
-                        Card(Modifier.fillMaxWidth()) {
-                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text(draft.title, style = MaterialTheme.typography.titleMedium)
-                                Text("${formatUnits(draft.price)} tUSDC", style = MaterialTheme.typography.titleLarge)
-                                Text("Hand off by ${formatDeadline(draft.deadlineIso)} · ${draft.category}", style = MaterialTheme.typography.bodyMedium)
+                        // High-contrast card on the darker background: these values go on-chain.
+                        val strong = MaterialTheme.colorScheme.onBackground
+                        Card(
+                            Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background),
+                            shape = MaterialTheme.shapes.medium,
+                        ) {
+                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    ItemAvatar(draft.title, size = 40)
+                                    Text(draft.title, style = MaterialTheme.typography.titleLarge, color = strong)
+                                }
+                                Text("${formatUnits(draft.price)} tUSDC", style = MaterialTheme.typography.headlineMedium, color = strong)
                                 Text(
-                                    if (draft.source == "llm") "Drafted by AI from your sentence. Check it." else "Read from your sentence. Check it.",
-                                    style = MaterialTheme.typography.labelSmall,
+                                    "Hand off by ${formatDeadline(draft.deadlineIso)} · ${draft.category}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = strong,
                                 )
+                                Pill(if (draft.source == "llm") "Drafted by AI · check it" else "Read from your sentence · check it", Brand.Green)
                             }
                         }
                         Text("Title and price go on-chain. Your phone checks the transaction matches this before your wallet opens.", style = MaterialTheme.typography.bodySmall)

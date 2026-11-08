@@ -1,6 +1,8 @@
 package app.taptrade.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -100,11 +102,20 @@ fun StatusChip(status: ListingStatus) {
     }
 }
 
-/** Gradient circle with the item's first letter. */
+private val avatarGradients = listOf(
+    Brush.linearGradient(listOf(Brand.Purple, Brand.Green)),
+    Brush.linearGradient(listOf(Brand.Blue, Brand.Purple)),
+    Brush.linearGradient(listOf(Brand.Green, Brand.Blue)),
+    Brush.linearGradient(listOf(Brand.Amber, Brand.Red)),
+    Brush.linearGradient(listOf(Brand.Purple, Brand.Red)),
+)
+
+/** Gradient circle with the item's first letter; the gradient varies per title. */
 @Composable
 fun ItemAvatar(title: String, size: Int = 44) {
+    val gradient = avatarGradients[Math.floorMod(title.hashCode(), avatarGradients.size)]
     Box(
-        Modifier.size(size.dp).clip(CircleShape).background(Brand.Gradient),
+        Modifier.size(size.dp).clip(CircleShape).background(gradient),
         contentAlignment = Alignment.Center,
     ) {
         Text(
@@ -195,8 +206,21 @@ val Gap = Arrangement.spacedBy(12.dp)
 @Composable
 fun ExplorerLink(label: String, url: String) {
     val uri = LocalUriHandler.current
-    TextButton(onClick = { runCatching { uri.openUri(url) } }, contentPadding = PaddingValues(0.dp)) {
-        Text("$label ↗", style = MaterialTheme.typography.labelMedium, color = Brand.Blue)
+    Text(
+        "$label ↗",
+        style = MaterialTheme.typography.labelMedium,
+        color = Brand.Blue,
+        modifier = Modifier.clickable { runCatching { uri.openUri(url) } }.padding(vertical = 4.dp),
+    )
+}
+
+/** Thin rounded progress bar (no Material stop-dot). */
+@Composable
+fun ScoreBar(fraction: Float, color: Color) {
+    Box(
+        Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Box(Modifier.fillMaxWidth(fraction.coerceIn(0f, 1f)).height(6.dp).clip(RoundedCornerShape(50)).background(color))
     }
 }
 
@@ -236,12 +260,7 @@ fun ReputationCard(title: String, wallet: String?, rep: Reputation?) {
                     Spacer(Modifier.weight(1f))
                     if (rep.level.isNotEmpty()) Pill(rep.level, levelColor(rep.level))
                 }
-                LinearProgressIndicator(
-                    progress = { rep.score / 100f },
-                    modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(50)),
-                    color = levelColor(rep.level),
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                )
+                ScoreBar(rep.score / 100f, levelColor(rep.level))
                 Text(
                     "${rep.completed} completed · ${rep.refunded} refunded · ${rep.disputed} disputed" +
                         if (rep.completed > 0) " · ${rep.distinctCounterparties} trader${if (rep.distinctCounterparties == 1) "" else "s"}" else "",
@@ -249,9 +268,12 @@ fun ReputationCard(title: String, wallet: String?, rep: Reputation?) {
                 )
                 Text(rep.summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (rep.formula.isNotEmpty()) {
-                    TextButton(onClick = { showFormula = !showFormula }, contentPadding = PaddingValues(0.dp)) {
-                        Text(if (showFormula) "Hide how it's scored" else "How is this scored?", style = MaterialTheme.typography.labelMedium)
-                    }
+                    Text(
+                        if (showFormula) "Hide how it's scored" else "How is this scored?",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.clickable { showFormula = !showFormula }.padding(vertical = 4.dp),
+                    )
                     if (showFormula) {
                         Text(
                             rep.formula + " Counted here: ${rep.effectiveCompleted} of ${rep.completed} completed.",
