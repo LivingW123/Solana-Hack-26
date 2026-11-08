@@ -22,7 +22,7 @@ Config comes from `backend/.env` (see `backend/.env.example`). The payer / mint
 authority is `PAYER_KEYPAIR`, default `~/.config/solana/id.json` (the deployer).
 Scripts refuse to run against a mainnet RPC URL.
 
-Funding emulator wallets (Phase 3+):
+Funding emulator wallets:
 
 ```bash
 npx tsx airdrop.ts <EMULATOR_WALLET_ADDRESS>
