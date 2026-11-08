@@ -15,6 +15,12 @@ interface BackendApi {
     /** Unsigned `create_listing` tx; [price] in base units. */
     suspend fun createListingTx(seller: String, title: String, price: Long): TxResponse
 
+    /** Sentence → draft (+ unsigned `create_listing` for [seller]). The app checks the tx against the draft. */
+    suspend fun draftListing(text: String, seller: String): DraftResponse
+
+    /** Unsigned `cancel_listing` (Open listings only). */
+    suspend fun cancelTx(listing: String, seller: String): TxResponse
+
     /** Unsigned `fund_escrow` tx for [buyer] (Solana Pay / Actions POST). */
     suspend fun fundTx(listing: String, buyer: String): TxResponse
 

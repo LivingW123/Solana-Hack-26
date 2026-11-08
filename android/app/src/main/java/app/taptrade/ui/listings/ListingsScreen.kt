@@ -36,7 +36,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.taptrade.data.Listing
 import app.taptrade.data.formatUnits
 import app.taptrade.data.shortAddress
+import app.taptrade.data.Explorer
 import app.taptrade.ui.ErrorText
+import app.taptrade.ui.ExplorerLink
 import app.taptrade.ui.LocalActivityResultSender
 import app.taptrade.ui.StatusChip
 import app.taptrade.ui.WalletAction
@@ -57,9 +59,15 @@ fun ListingsScreen(onOpen: (pubkey: String) -> Unit) {
 
     if (selling) {
         SellDialog(
-            busy = state.creating,
+            state = state,
             validate = vm::validate,
-            onDismiss = { selling = false },
+            onDismiss = {
+                selling = false
+                vm.clearDraft()
+            },
+            onDraft = vm::draft,
+            onClearDraft = vm::clearDraft,
+            onSignDraft = { vm.signDraft(sender) { selling = false } },
             onSubmit = { title, price -> vm.createListing(sender, title, price) { selling = false } },
         )
     }
@@ -79,6 +87,7 @@ fun ListingsScreen(onOpen: (pubkey: String) -> Unit) {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                 ErrorText(state.error)
                 state.message?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                state.lastTx?.let { ExplorerLink("View transaction on Solana Explorer", Explorer.tx(it)) }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Listings", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                     TextButton(onClick = vm::refresh) { Text("Refresh") }
@@ -102,22 +111,62 @@ fun ListingsScreen(onOpen: (pubkey: String) -> Unit) {
     }
 }
 
+/**
+ * Two ways to list: describe it in a sentence (AI draft → review → sign), or fill the
+ * form. Either way the seller sees exactly what goes on-chain before the wallet opens.
+ */
 @Composable
 private fun SellDialog(
-    busy: Boolean,
+    state: ListingsUiState,
     validate: (title: String, price: String) -> String?,
     onDismiss: () -> Unit,
+    onDraft: (String) -> Unit,
+    onClearDraft: () -> Unit,
+    onSignDraft: () -> Unit,
     onSubmit: (title: String, price: String) -> Unit,
 ) {
+    val busy = state.creating || state.drafting
+    var manual by rememberSaveable { mutableStateOf(false) }
+    var sentence by rememberSaveable { mutableStateOf("") }
     var title by rememberSaveable { mutableStateOf("") }
     var price by rememberSaveable { mutableStateOf("") }
+    val draft = state.draft?.draft
     val problem = validate(title, price)
+
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
-        title = { Text("New listing") },
+        title = { Text(if (draft != null) "Review your listing" else "New listing") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
+                ErrorText(state.error)
+                when {
+                    draft != null -> {
+                        Card(Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(draft.title, style = MaterialTheme.typography.titleMedium)
+                                Text("${formatUnits(draft.price)} tUSDC", style = MaterialTheme.typography.titleLarge)
+                                Text("Hand off by ${formatDeadline(draft.deadlineIso)} · ${draft.category}", style = MaterialTheme.typography.bodyMedium)
+                                Text(
+                                    if (draft.source == "llm") "Drafted by AI from your sentence. Check it." else "Read from your sentence. Check it.",
+                                    style = MaterialTheme.typography.labelSmall,
+                                )
+                            }
+                        }
+                        Text("Title and price go on-chain. Your phone checks the transaction matches this before your wallet opens.", style = MaterialTheme.typography.bodySmall)
+                    }
+                    !manual -> {
+                        OutlinedTextField(
+                            value = sentence,
+                            onValueChange = { sentence = it },
+                            label = { Text("Describe it") },
+                            placeholder = { Text("sell my calc textbook for 20 USDC by Friday") },
+                            enabled = !busy,
+                            minLines = 2,
+                        )
+                        TextButton(onClick = { manual = true }, enabled = !busy) { Text("Fill in a form instead") }
+                    }
+                    else -> {
+                        OutlinedTextField(
                     value = title,
                     onValueChange = { title = it },
                     label = { Text("Title (on-chain)") },
@@ -132,20 +181,48 @@ private fun SellDialog(
                     enabled = !busy,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 )
-                if (title.isNotEmpty() || price.isNotEmpty()) {
-                    problem?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+                        if (title.isNotEmpty() || price.isNotEmpty()) {
+                            problem?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+                        }
+                        Text("Your wallet signs; the listing lives on Solana.", style = MaterialTheme.typography.bodySmall)
+                        TextButton(onClick = { manual = false }, enabled = !busy) { Text("Describe it in a sentence instead") }
+                    }
                 }
-                Text("Your wallet signs; the listing lives on Solana.", style = MaterialTheme.typography.bodySmall)
             }
         },
         confirmButton = {
-            Button(onClick = { onSubmit(title, price) }, enabled = problem == null && !busy) {
-                Text(if (busy) "Listing…" else "List it")
+            when {
+                draft != null -> Button(onClick = onSignDraft, enabled = !busy) {
+                    Text(if (state.creating) "Listing…" else "Sign & list")
+                }
+                !manual -> Button(onClick = { onDraft(sentence) }, enabled = sentence.trim().length >= 3 && !busy) {
+                    Text(if (state.drafting) "Drafting…" else "Draft listing")
+                }
+                else -> Button(onClick = { onSubmit(title, price) }, enabled = problem == null && !busy) {
+                    Text(if (state.creating) "Listing…" else "List it")
+                }
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("Cancel") } },
+        dismissButton = {
+            if (draft != null) {
+                TextButton(onClick = {
+                    // Edit: open the form prefilled with the draft.
+                    title = draft.title
+                    price = formatUnits(draft.price)
+                    manual = true
+                    onClearDraft()
+                }, enabled = !busy) { Text("Edit") }
+            } else {
+                TextButton(onClick = onDismiss, enabled = !busy) { Text("Cancel") }
+            }
+        },
     )
 }
+
+private fun formatDeadline(iso: String): String = runCatching {
+    java.time.ZonedDateTime.parse(iso).withZoneSameInstant(java.time.ZoneId.systemDefault())
+        .format(java.time.format.DateTimeFormatter.ofPattern("EEE MMM d, h:mm a"))
+}.getOrDefault(iso)
 
 @Composable
 private fun ListingRow(listing: Listing, isMine: Boolean, onClick: () -> Unit) {

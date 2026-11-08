@@ -38,7 +38,43 @@ data class Reputation(
     /** 0..100, computed by the backend from on-chain counters. */
     val score: Int,
     val summary: String,
+    /** Distinct wallets this one completed trades with (from its on-chain history). */
+    val distinctCounterparties: Int = 0,
+    /** Completed trades that count: at most 3 per counterparty. */
+    val effectiveCompleted: Int = 0,
+    /** "New" | "Building" | "Trusted" | "Caution". */
+    val level: String = "",
+    /** The score formula, shown so the number is explainable. */
+    val formula: String = "",
+    val summarySource: String = "fallback",
 )
+
+/** `/ai/draft-listing` draft: what the seller reviews before signing. */
+@Serializable
+data class Draft(
+    val title: String,
+    /** Base units. */
+    val price: Long,
+    val priceUsdc: Double,
+    val deadlineIso: String,
+    val category: String,
+    /** "llm" or "rules". */
+    val source: String,
+)
+
+@Serializable
+data class DraftResponse(
+    val draft: Draft,
+    val transaction: String? = null,
+    val message: String? = null,
+    val listing: String? = null,
+)
+
+/** Solana Explorer links (devnet), so anyone can verify what the app shows. */
+object Explorer {
+    fun tx(signature: String) = "https://explorer.solana.com/tx/$signature?cluster=devnet"
+    fun address(pubkey: String) = "https://explorer.solana.com/address/$pubkey?cluster=devnet"
+}
 
 /** Unsigned transaction from the backend, base64-encoded. */
 @Serializable

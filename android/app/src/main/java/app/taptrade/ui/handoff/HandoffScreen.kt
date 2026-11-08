@@ -36,7 +36,10 @@ import app.taptrade.data.formatUnits
 import app.taptrade.data.shortAddress
 import app.taptrade.ui.ErrorText
 import app.taptrade.ui.Gap
+import app.taptrade.data.Explorer
+import app.taptrade.ui.ExplorerLink
 import app.taptrade.ui.LocalActivityResultSender
+import app.taptrade.ui.ReputationCard
 import app.taptrade.ui.WalletAction
 import app.taptrade.ui.screenViewModel
 
@@ -73,6 +76,14 @@ fun HandoffScreen(onBack: () -> Unit) {
                         onRetry = vm::retryReview,
                     )
                 }
+                val done = state.settlement != null || state.released != null
+                if (done) {
+                    // Phase 8: counters were bumped on-chain by `release`; re-read, not assumed.
+                    ReputationCard("Your reputation (updated on-chain)", address, state.myRep)
+                } else {
+                    val other = if (vm.role == HandoffRole.Seller) state.listing?.buyer else state.listing?.seller
+                    ReputationCard(if (vm.role == HandoffRole.Seller) "Buyer's reputation" else "Seller's reputation", other, state.counterpartRep)
+                }
             }
         }
     }
@@ -90,6 +101,7 @@ private fun SellerPanel(state: HandoffUiState, onPublish: () -> Unit, onRegenera
         Settlement.Paid -> {
             Text("Paid ✓", style = MaterialTheme.typography.displayMedium, color = MaterialTheme.colorScheme.primary)
             Text("The escrow closed on-chain and the tUSDC is in your wallet. Your phone saw it straight from Solana, not from our server.")
+            state.listing?.escrow?.let { ExplorerLink("Escrow history on Solana Explorer", Explorer.address(it)) }
             return
         }
         Settlement.Refunded -> {
@@ -137,6 +149,7 @@ private fun BuyerPanel(
         SelectionContainer {
             Text("Tx ${released.signature}", style = MaterialTheme.typography.bodySmall)
         }
+        ExplorerLink("View release on Solana Explorer", Explorer.tx(released.signature))
     } else if (received == null) {
         Text("Waiting for tap…", style = MaterialTheme.typography.titleLarge)
         Text("Tap the seller's phone after you've checked the item.")

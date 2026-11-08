@@ -36,6 +36,22 @@ class HttpBackendApi(private val baseUrl: String) : BackendApi {
             }.toString())
         )
 
+    override suspend fun draftListing(text: String, seller: String): DraftResponse =
+        json.decodeFromString(
+            request("POST", "/ai/draft-listing", buildJsonObject {
+                put("text", text)
+                put("seller", seller)
+            }.toString())
+        )
+
+    override suspend fun cancelTx(listing: String, seller: String): TxResponse =
+        json.decodeFromString(
+            request("POST", "/tx/cancel-listing", buildJsonObject {
+                put("listing", listing)
+                put("account", seller)
+            }.toString())
+        )
+
     override suspend fun fundTx(listing: String, buyer: String): TxResponse =
         json.decodeFromString(
             request("POST", "/tx/fund?listing=$listing", buildJsonObject {

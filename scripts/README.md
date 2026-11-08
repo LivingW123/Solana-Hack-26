@@ -29,6 +29,16 @@ npx tsx airdrop.ts <EMULATOR_WALLET_ADDRESS>
 npx tsx mint-tusdc.ts <EMULATOR_WALLET_ADDRESS>
 ```
 
+## Before a demo (`demo-prep`)
+
+```bash
+npm run demo-prep                       # emulator seller + buyer
+npx tsx demo-prep.ts <addr>... [--sol 0.5] [--tusdc 1000]
+```
+
+Tops each wallet up to the targets, prints balances and reputation, and lists
+open/funded listings (backend at `BACKEND=`, default `http://localhost:3000`).
+
 ## Fake tap (`tap.sh`)
 
 Runs on the **emulator machine** (bash / Git Bash, `adb` on PATH or `ADB=…`).
@@ -37,6 +47,8 @@ deep link, which is what an NFC tap would hand over.
 
 ```bash
 scripts/tap.sh                      # tap the seller's last "Publish for tap" URL (from emulator-5554's logcat)
+scripts/tap.sh --tamper             # same URL via the DEMO_TAMPER route: hidden token approval (must be blocked)
+scripts/tap.sh --wrong-host         # same URL on another host (blocked before the app contacts it)
 scripts/tap.sh <ESCROW> <NONCE>     # build the URL from parts
 scripts/tap.sh --url 'solana:…'     # any URL as-is (tampered-URL demo)
 ```

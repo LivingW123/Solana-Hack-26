@@ -22,7 +22,7 @@ npm run sync-idl        # after `anchor build`: copy the IDL + types into src/id
 | GET | `/listings` | | Open + Funded listings from the index, newest first |
 | GET | `/listings/:pubkey` | | One listing, read straight from chain (404 once settled or cancelled) |
 | GET | `/events` | | Last 100 program events (`ListingCreated`, `EscrowFunded`, …) |
-| GET | `/reputation/:wallet` | | On-chain counters + score (Beta(1,1) completion rate) + summary |
+| GET | `/reputation/:wallet` | | On-chain counters, distinct counterparties, score + level + formula, one-line summary |
 | POST | `/tx/create-listing` | `{seller, title, price, description?}` | `{transaction, message, listing, listingId}` |
 | GET | `/tx/fund?listing=` | | Solana Actions metadata (Blink-ready) |
 | POST | `/tx/fund?listing=` | `{account}` | `{type:"transaction", transaction, message, escrow}` |
@@ -30,6 +30,8 @@ npm run sync-idl        # after `anchor build`: copy the IDL + types into src/id
 | GET | `/tx/release` | | Solana Pay `{label, icon}` |
 | POST | `/tx/release?escrow=&nonce=` | `{account}` | Solana Pay `{transaction, message}`; nonce is claimed by the first buyer to fetch (others get 409), and that buyer may re-fetch a fresh blockhash until the 2-min expiry |
 | GET | `/actions.json` | | Actions discovery rules |
+| POST | `/ai/draft-listing` | `{text, seller?}` | `{draft: {title, price, priceUsdc, deadlineIso, category, source}, transaction?, message?, listing?}` (422 if no listing can be read from the text) |
+| POST | `/tx/cancel-listing` | `{listing, account}` | Unsigned `cancel_listing` (seller, Open only) |
 | POST | `/ai/explain` | `{tx_base64, checks[]}` | `{summary, source: "llm" \| "fallback"}`: one sentence for the explainer card |
 | POST | `/demo/evil/tx/release?escrow=` | `{account}` | **Only with `DEMO_TAMPER=1`.** Real release + hidden SPL Token `approve` to an attacker, under the same label |
 
@@ -61,6 +63,31 @@ shown above those checks:
 `npm run e2e` exercises it. With `DEMO_TAMPER=1` and `WRITE_FIXTURE=1` it also
 writes `android/app/src/test/resources/release-fixture.json` (real genuine +
 tampered transactions) for the app's rule-check unit test.
+
+## Natural-language listing (`/ai/draft-listing`)
+
+The LLM turns a sentence into `{title, price_usdc, deadline_iso, category}`
+using structured outputs, with today's date in the prompt so "by Friday"
+resolves. The backend then validates it whoever wrote it: price > 0, deadline
+in the future and within 30 days, title at most 64 bytes. Price is converted to
+base units, and the result becomes an unsigned `create_listing`. Without a key,
+or if the output fails validation, a rule-based parser handles "sell my X for N
+USDC by <day>" (`npm test`). The app shows the draft for review and checks that
+the transaction's title, price and mint match it before the wallet opens.
+
+## Reputation (`/reputation/:wallet`)
+
+- **Counters:** read from the wallet's `Reputation` PDA. Only `release` and
+  `refund_after_deadline` write them.
+- **Distinct counterparties:** read from that PDA's own transaction history.
+  Every settle writes it, and each `EscrowReleased` event names both sides.
+  Results are cached per signature, and the indexer feeds live events in.
+- **Score:**
+  `100 × (C + 1) / (C + refunded + 2×disputed + 2)`, where `C` counts at most
+  3 completed trades per counterparty. A new wallet starts at 50, and repeated
+  trades between the same two wallets can't farm the score.
+- **Summary:** the LLM only phrases the one-liner from those numbers, and must
+  repeat the completed count; otherwise a template is used.
 
 ## Indexer
 

@@ -3,7 +3,10 @@ package app.taptrade.ui.listings
 import android.util.Base64
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.taptrade.BuildConfig
 import app.taptrade.data.BackendApi
+import app.taptrade.data.DraftResponse
+import app.taptrade.explain.ListingChecks
 import app.taptrade.data.Listing
 import app.taptrade.data.MAX_TITLE_BYTES
 import app.taptrade.data.SolanaRpc
@@ -23,6 +26,10 @@ data class ListingsUiState(
     val listings: List<Listing> = emptyList(),
     val connecting: Boolean = false,
     val creating: Boolean = false,
+    val drafting: Boolean = false,
+    val draft: DraftResponse? = null,
+    /** Signature of the last listing tx, for the explorer link. */
+    val lastTx: String? = null,
     val message: String? = null,
     val error: String? = null,
 )
@@ -69,20 +76,57 @@ class ListingsViewModel(
         else -> null
     }
 
-    /** Seller: unsigned create_listing from backend → sign in wallet → wait for confirmation → refresh. */
+    /** Seller, manual form: unsigned create_listing from backend → sign → confirm → refresh. */
     fun createListing(sender: ActivityResultSender, title: String, price: String, onDone: () -> Unit) {
         val seller = wallet.address.value ?: return _state.update { it.copy(error = "Connect a wallet first") }
         validate(title, price)?.let { msg -> return _state.update { it.copy(error = msg) } }
+        submit(sender, onDone) {
+            val tx = backend.createListingTx(seller, title.trim(), parseUnits(price)!!)
+            tx.transaction to tx.listing
+        }
+    }
+
+    /** Seller, natural language: one sentence → draft to review (AI, or rules without a key). */
+    fun draft(text: String) {
+        val seller = wallet.address.value ?: return _state.update { it.copy(error = "Connect a wallet first") }
+        viewModelScope.launch {
+            _state.update { it.copy(drafting = true, draft = null, error = null) }
+            runCatching { backend.draftListing(text.trim(), seller) }
+                .onSuccess { d -> _state.update { it.copy(drafting = false, draft = d) } }
+                .onFailure { e -> _state.update { it.copy(drafting = false, error = e.message ?: e.toString()) } }
+        }
+    }
+
+    fun clearDraft() = _state.update { it.copy(draft = null) }
+
+    /** Seller: sign the reviewed draft, after checking its tx lists exactly what was reviewed. */
+    fun signDraft(sender: ActivityResultSender, onDone: () -> Unit) {
+        val d = _state.value.draft ?: return
+        val me = wallet.address.value ?: return _state.update { it.copy(error = "Connect a wallet first") }
+        val txB64 = d.transaction ?: return _state.update { it.copy(error = "Draft has no transaction") }
+        val bytes = Base64.decode(txB64, Base64.DEFAULT)
+        val bad = ListingChecks.check(bytes, BuildConfig.PROGRAM_ID, me, BuildConfig.TUSDC_MINT, d.draft.title, d.draft.price)
+            .filter { !it.ok }
+        if (bad.isNotEmpty()) {
+            return _state.update { it.copy(error = "Not signing: " + bad.joinToString("; ") { c -> "${c.rule} (${c.detail})" }) }
+        }
+        submit(sender, onDone) { txB64 to d.listing }
+    }
+
+    /** Sign + confirm a create_listing, then wait until the backend's index shows it. */
+    private fun submit(sender: ActivityResultSender, onDone: () -> Unit, build: suspend () -> Pair<String, String?>) {
         viewModelScope.launch {
             _state.update { it.copy(creating = true, error = null, message = null) }
             runCatching {
-                val tx = backend.createListingTx(seller, title.trim(), parseUnits(price)!!)
-                val sig = wallet.signAndSend(sender, Base64.decode(tx.transaction, Base64.DEFAULT)).getOrThrow()
+                val (txB64, listing) = build()
+                val sig = wallet.signAndSend(sender, Base64.decode(txB64, Base64.DEFAULT)).getOrThrow()
                 val t0 = System.currentTimeMillis()
                 rpc.awaitConfirmed(sig)
-                (System.currentTimeMillis() - t0) to tx.listing
-            }.onSuccess { (ms, listing) ->
-                _state.update { it.copy(creating = false, message = "Listed on-chain · confirmed in ${"%.1f".format(ms / 1000.0)} s") }
+                Triple(System.currentTimeMillis() - t0, listing, sig)
+            }.onSuccess { (ms, listing, sig) ->
+                _state.update {
+                    it.copy(creating = false, draft = null, lastTx = sig, message = "Listed on-chain · confirmed in ${"%.1f".format(ms / 1000.0)} s")
+                }
                 onDone()
                 // Confirmed on our RPC; the backend's index can lag a second or two behind,
                 // so re-read until the new listing shows up.
@@ -92,8 +136,8 @@ class ListingsViewModel(
                     if (l != null && (listing == null || l.any { x -> x.pubkey == listing })) break
                     delay(1_000)
                 }
-                delay(4_000)
-                _state.update { it.copy(message = null) }
+                delay(8_000)
+                _state.update { it.copy(message = null, lastTx = null) }
             }.onFailure { e ->
                 _state.update { it.copy(creating = false, error = e.message ?: e.toString()) }
             }

@@ -24,6 +24,8 @@ data class ListingDetailUiState(
     val sellerRep: Reputation? = null,
     val busy: Boolean = false,
     val connecting: Boolean = false,
+    /** Last fund tx signature, for the explorer link. */
+    val lastTx: String? = null,
     val message: String? = null,
     val error: String? = null,
 )
@@ -69,18 +71,37 @@ class ListingDetailViewModel(
                 val sig = wallet.signAndSend(sender, bytes).getOrThrow()
                 val t0 = System.currentTimeMillis()
                 rpc.awaitConfirmed(sig)
-                (System.currentTimeMillis() - t0) to tx.escrow
-            }.onSuccess { (ms, escrow) ->
+                Triple(System.currentTimeMillis() - t0, tx.escrow, sig)
+            }.onSuccess { (ms, escrow, sig) ->
                 // Confirmed on-chain, so show Funded now (hides the Fund button) instead of
                 // waiting for the backend's RPC node to catch up; then re-read until it agrees.
                 _state.update {
                     it.copy(
                         busy = false,
+                        lastTx = sig,
                         listing = it.listing?.copy(status = ListingStatus.Funded, buyer = buyer, escrow = escrow ?: it.listing?.escrow),
                         message = "Escrow funded · confirmed in ${"%.1f".format(ms / 1000.0)} s. Meet the seller to hand off.",
                     )
                 }
                 reloadUntilFunded()
+            }.onFailure { e ->
+                _state.update { it.copy(busy = false, error = e.message ?: e.toString()) }
+            }
+        }
+    }
+
+    /** Seller: cancel an Open listing (closes the account, rent back) → confirm → leave the screen. */
+    fun cancel(sender: ActivityResultSender, onDone: () -> Unit) {
+        val seller = wallet.address.value ?: return setError("Connect a wallet first")
+        viewModelScope.launch {
+            _state.update { it.copy(busy = true, error = null, message = null) }
+            runCatching {
+                val tx = backend.cancelTx(pubkey, seller)
+                val sig = wallet.signAndSend(sender, Base64.decode(tx.transaction, Base64.DEFAULT)).getOrThrow()
+                rpc.awaitConfirmed(sig)
+            }.onSuccess {
+                _state.update { it.copy(busy = false) }
+                onDone()
             }.onFailure { e ->
                 _state.update { it.copy(busy = false, error = e.message ?: e.toString()) }
             }

@@ -9,6 +9,7 @@ import app.taptrade.BuildConfig
 import app.taptrade.data.AccountEvent
 import app.taptrade.data.BackendApi
 import app.taptrade.data.Listing
+import app.taptrade.data.Reputation
 import app.taptrade.data.SolanaRpc
 import app.taptrade.explain.ChainState
 import app.taptrade.explain.Check
@@ -66,6 +67,10 @@ data class HandoffUiState(
     val loading: Boolean = true,
     val listing: Listing? = null,
     val connecting: Boolean = false,
+    /** The other side's on-chain reputation (seller sees buyer's, buyer sees seller's). */
+    val counterpartRep: Reputation? = null,
+    /** Own reputation, re-read after the trade settles (counters bumped on-chain by `release`). */
+    val myRep: Reputation? = null,
     // Seller
     val url: String? = null,
     val expiresAt: Long? = null,
@@ -130,6 +135,10 @@ class HandoffViewModel(
                 }
                 if (role == HandoffRole.Seller) listing.escrow?.let { watchEscrow(it, listing.pubkey) }
                 maybeReview()
+                val other = if (role == HandoffRole.Seller) listing.buyer else listing.seller
+                other?.let { o ->
+                    runCatching { backend.reputation(o) }.getOrNull()?.let { r -> _state.update { it.copy(counterpartRep = r) } }
+                }
             }.onFailure { e ->
                 _state.update { it.copy(loading = false, error = e.message ?: e.toString()) }
             }
@@ -191,6 +200,7 @@ class HandoffViewModel(
                     // Escrow closed. `release` closes the listing as well; `refund_after_deadline` reopens it.
                     val settlement = if (rpc.accountExists(listing)) Settlement.Refunded else Settlement.Paid
                     _state.update { it.copy(settlement = settlement, watching = false) }
+                    refreshMyRep()
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -327,6 +337,7 @@ class HandoffViewModel(
                 Released(sig, System.currentTimeMillis() - t0, r.summary ?: r.claimed)
             }.onSuccess { done ->
                 _state.update { it.copy(releasing = false, released = done) }
+                if (done != null) refreshMyRep()
             }.onFailure { e ->
                 if (isExpiry(e)) {
                     // Never a dead end: say what happened and re-check with a fresh transaction.
@@ -339,6 +350,15 @@ class HandoffViewModel(
                     _state.update { it.copy(releasing = false, error = friendly(e), review = if (codeGone) null else it.review) }
                 }
             }
+        }
+    }
+
+    /** After settle: re-read own counters (the backend's RPC may lag ours by a moment). */
+    private fun refreshMyRep() {
+        val me = wallet.address.value ?: return
+        viewModelScope.launch {
+            delay(1_500)
+            runCatching { backend.reputation(me) }.getOrNull()?.let { r -> _state.update { it.copy(myRep = r) } }
         }
     }
 

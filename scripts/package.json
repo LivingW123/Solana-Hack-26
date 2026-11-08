@@ -8,6 +8,7 @@
     "create-mint": "tsx create-mint.ts",
     "mint-tusdc": "tsx mint-tusdc.ts",
     "balances": "tsx balances.ts",
+    "demo-prep": "tsx demo-prep.ts",
     "setup": "tsx airdrop.ts seller buyer && tsx create-mint.ts && tsx mint-tusdc.ts seller buyer && tsx balances.ts seller buyer",
     "typecheck": "tsc --noEmit"
   },

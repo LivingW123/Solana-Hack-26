@@ -227,6 +227,18 @@ async function main() {
   assert.equal(d.draft.price, 20_000_000);
   assert.match(d.draft.title, /calc/i);
   assert.ok(new Date(d.draft.deadlineIso).getTime() > Date.now());
+  if (process.env.WRITE_FIXTURE) {
+    const out = path.resolve(__dirname, "../../android/app/src/test/resources/listing-fixture.json");
+    fs.writeFileSync(
+      out,
+      JSON.stringify(
+        { programId: health.programId, mint: health.mint, seller: seller.publicKey.toBase58(), title: d.draft.title, price: d.draft.price, tx: d.transaction },
+        null,
+        2,
+      ) + "\n",
+    );
+    console.log(`  wrote ${path.relative(process.cwd(), out)}`);
+  }
   console.log(`  confirmed in ${(await signAndSend(d.transaction, seller)).ms} ms → ${d.listing}`);
   const onchain = await ok("GET", `/listings/${d.listing}`);
   assert.equal(onchain.title, d.draft.title);

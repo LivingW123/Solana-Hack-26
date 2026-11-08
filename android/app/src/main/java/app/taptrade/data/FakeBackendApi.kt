@@ -56,6 +56,12 @@ class FakeBackendApi(
     override suspend fun createListingTx(seller: String, title: String, price: Long): TxResponse =
         throw UnsupportedOperationException("Listing needs the real backend (taptrade.fakeBackend=false)")
 
+    override suspend fun draftListing(text: String, seller: String): DraftResponse =
+        throw UnsupportedOperationException("Drafting needs the real backend (taptrade.fakeBackend=false)")
+
+    override suspend fun cancelTx(listing: String, seller: String): TxResponse =
+        throw UnsupportedOperationException("Cancel needs the real backend (taptrade.fakeBackend=false)")
+
     override suspend fun fundTx(listing: String, buyer: String): TxResponse =
         throw UnsupportedOperationException("Funding needs the real backend (taptrade.fakeBackend=false)")
 

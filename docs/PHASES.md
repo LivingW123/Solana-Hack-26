@@ -65,21 +65,22 @@ Stretch items come only after Phase 9.
 
 **Exit (milestone):** A tampered URL is blocked, with reasons shown. ✓ Unit test 9/9. `tap.sh --tamper` → "Blocked: don't sign this · ✗ Calls only the TapTrade program · SPL Token: Approve…", no Sign button; `--wrong-host` → blocked before contacting the host; genuine tap → 9 rules ✓ + sentence → released in 1.1 s, seller "Paid ✓".
 
-## Phase 7 — Natural-language listing
-- [ ] `POST /ai/draft-listing` → validated JSON → unsigned `create_listing` tx
-- [ ] Review screen before signing
+## Phase 7 — Natural-language listing  ← *backend verified on devnet; app awaiting emulator run*
+- [x] `POST /ai/draft-listing` → LLM `{title, price_usdc, deadline_iso, category}` (structured outputs, retry once) or rule parser without a key → validated (price > 0, deadline future ≤ 30 days, title ≤ 64 B) → base units → unsigned `create_listing`. `npm test` (parser + validation) and e2e: "sell my calc textbook for 20 USDC by Friday" → "Calc textbook", 20 tUSDC, Fri, textbooks → on-chain → cancelled
+- [~] Review screen before signing (Sell → "Describe it" → review card → Sign & list, or Edit → form); the phone checks the tx's title/price/mint/signer match the draft (`explain/ListingChecks.kt`, unit-tested on a real draft tx)
+- [x] `POST /tx/cancel-listing` + Cancel listing button (seller, Open)
 
-**Exit:** One sentence produces an on-chain listing.
+**Exit:** One sentence produces an on-chain listing. (✓ through the API on devnet)
 
-## Phase 8 — Reputation
-- [ ] `GET /reputation/:wallet`: counters, explainable score (prior for new wallets), LLM one-liner
-- [ ] Shown on the listing and handoff screens
+## Phase 8 — Reputation  ← *backend verified on devnet; app awaiting emulator run*
+- [x] `GET /reputation/:wallet`: on-chain counters + distinct counterparties (from the Reputation PDA's own settle history, cached per signature) → `100 × (C+1)/(C+refunded+2×disputed+2)`, C capped at 3 per counterparty (anti-farming; new wallet = 50), level, formula, LLM one-liner that must repeat the completed count (template fallback). e2e: 7 completed with 1 counterparty → counted 3 → 80/100
+- [~] Shown on listing detail (seller), handoff (the other side's), and "Your reputation (updated on-chain)" after release on both phones; "How is this scored?" shows the formula; explorer link to the PDA
 
 **Exit:** Counters update after a trade and show in the app.
 
-## Phase 9 — Polish + demo rehearsal
-- [ ] Run through the 3-minute demo script end to end, twice
-- [ ] Explorer links, loading/error states, reset script for fresh demo wallets
+## Phase 9 — Polish + demo rehearsal  ← *tooling done; rehearsal on the emulator machine*
+- [ ] Run through the 3-minute demo script (`docs/DEMO.md`) end to end, twice
+- [x] Explorer links (listing, fund/list/release txs, escrow history, reputation PDA), loading/error states, `scripts/demo-prep.ts` (top up demo wallets, show listings + reputation), README + demo script with recovery table
 
 **Exit:** A clean demo run with no manual fixes.
 

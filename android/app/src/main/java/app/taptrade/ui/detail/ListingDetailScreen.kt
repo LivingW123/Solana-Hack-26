@@ -28,6 +28,10 @@ import app.taptrade.data.shortAddress
 import app.taptrade.ui.ErrorText
 import app.taptrade.ui.Gap
 import app.taptrade.ui.LocalActivityResultSender
+import androidx.compose.material3.OutlinedButton
+import app.taptrade.data.Explorer
+import app.taptrade.ui.ExplorerLink
+import app.taptrade.ui.ReputationCard
 import app.taptrade.ui.StatusChip
 import app.taptrade.ui.WalletAction
 import app.taptrade.ui.handoff.HandoffRole
@@ -61,14 +65,16 @@ fun ListingDetailScreen(
             ) {
                 ErrorText(state.error)
                 state.message?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                state.lastTx?.let { ExplorerLink("View transaction on Solana Explorer", Explorer.tx(it)) }
                 state.listing?.let { listing ->
                     ListingInfo(listing)
-                    SellerReputation(state.sellerRep)
+                    ReputationCard("Seller reputation", listing.seller, state.sellerRep)
                     Actions(
                         listing = listing,
                         address = address,
                         busy = state.busy,
                         onFund = { vm.fund(sender) },
+                        onCancel = { vm.cancel(sender, onBack) },
                         onHandoff = { role -> onHandoff(listing.pubkey, role) },
                     )
                 }
@@ -85,22 +91,7 @@ private fun ListingInfo(listing: Listing) {
     Text("Seller ${shortAddress(listing.seller)}", style = MaterialTheme.typography.bodyMedium)
     Text("Listing ${shortAddress(listing.pubkey)}", style = MaterialTheme.typography.bodySmall)
     listing.escrow?.let { Text("Escrow ${shortAddress(it)}", style = MaterialTheme.typography.bodySmall) }
-}
-
-@Composable
-private fun SellerReputation(rep: Reputation?) {
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp)) {
-            Text("Seller reputation", style = MaterialTheme.typography.titleSmall)
-            if (rep == null) {
-                Text("Unavailable", style = MaterialTheme.typography.bodyMedium)
-            } else {
-                Text("Score ${rep.score}/100", style = MaterialTheme.typography.titleMedium)
-                Text("${rep.completed} completed · ${rep.refunded} refunded · ${rep.disputed} disputed")
-                Text(rep.summary, style = MaterialTheme.typography.bodySmall)
-            }
-        }
-    }
+    ExplorerLink("Listing on-chain", Explorer.address(listing.pubkey))
 }
 
 @Composable
@@ -109,6 +100,7 @@ private fun Actions(
     address: String?,
     busy: Boolean,
     onFund: () -> Unit,
+    onCancel: () -> Unit,
     onHandoff: (HandoffRole) -> Unit,
 ) {
     val isSeller = address != null && address == listing.seller
@@ -120,8 +112,12 @@ private fun Actions(
             Button(onClick = onFund, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
                 Text("Fund escrow · ${formatUnits(listing.price)} tUSDC")
             }
-        listing.status == ListingStatus.Open && isSeller ->
+        listing.status == ListingStatus.Open && isSeller -> {
             Text("Waiting for a buyer to fund escrow.")
+            OutlinedButton(onClick = onCancel, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
+                Text("Cancel listing")
+            }
+        }
         listing.status == ListingStatus.Funded && isSeller ->
             Button(onClick = { onHandoff(HandoffRole.Seller) }, modifier = Modifier.fillMaxWidth()) {
                 Text("Ready for handoff")

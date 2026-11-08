@@ -106,6 +106,20 @@ below takes **two** taps: **AUTHORIZE**, then **SEND TRANSACTION TO CLUSTER**.
 5. **Buyer:** **Sign release** → approve. Shows "Released ✓ · confirmed in X s".
 6. **Seller:** flips to **Paid ✓** by itself, from the RPC websocket, with no backend involved.
 
+## 9. Phase 7–9 checks
+
+- `./gradlew :app:testDebugUnitTest`: ReleaseChecksTest + ListingChecksTest.
+- **Phase 7:** Seller → **Sell** → "Describe it":
+  `sell my calc textbook for 20 USDC by Friday` → **Draft listing** → review
+  card (*Calc textbook · 20 tUSDC · Fri · textbooks*) → **Sign & list** → the
+  listing appears on both phones. **Edit** opens the form prefilled. Seller can
+  **Cancel listing** an Open one.
+- **Phase 8:** Listing detail shows the seller's reputation with level and
+  "How is this scored?". Handoff shows the other side's. After a release both
+  phones show **Your reputation (updated on-chain)** with completed +1.
+- **Phase 9:** run [docs/DEMO.md](DEMO.md) end to end twice. Explorer links
+  open in the emulator's browser.
+
 ## 8. Phase 6 check: the explainer blocks a tampered tap
 
 Start the backend with the demo route: add `DEMO_TAMPER=1` to `backend/.env`
