@@ -334,7 +334,7 @@ class HandoffViewModel(
                 val sig = wallet.signAndSend(sender, r.tx!!).getOrThrow()
                 val t0 = System.currentTimeMillis()
                 rpc.awaitConfirmed(sig)
-                Released(sig, System.currentTimeMillis() - t0, r.summary ?: r.claimed)
+                Released(sig, System.currentTimeMillis() - t0, (r.summary ?: r.claimed)?.replaceFirst(Regex("^Releases? "), "Released "))
             }.onSuccess { done ->
                 _state.update { it.copy(releasing = false, released = done) }
                 if (done != null) refreshMyRep()

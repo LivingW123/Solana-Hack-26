@@ -220,8 +220,8 @@ private fun SellDialog(
 }
 
 private fun formatDeadline(iso: String): String = runCatching {
-    java.time.ZonedDateTime.parse(iso).withZoneSameInstant(java.time.ZoneId.systemDefault())
-        .format(java.time.format.DateTimeFormatter.ofPattern("EEE MMM d, h:mm a"))
+    // Deadlines are end-of-day UTC; show the date only so "by Friday" reads as Friday everywhere.
+    java.time.ZonedDateTime.parse(iso).format(java.time.format.DateTimeFormatter.ofPattern("EEE, MMM d"))
 }.getOrDefault(iso)
 
 @Composable

@@ -21,7 +21,7 @@ const Env = z.object({
   INDEX_INTERVAL_MS: z.coerce.number().int().min(1000).default(15000),
   /** Anthropic API key for the explainer sentence / summaries. Unset → template fallbacks only. */
   LLM_API_KEY: optional(z.string()),
-  /** Fast/cheap tier per CLAUDE.md. */
+  /** Fast/cheap tier: the explainer and drafts are short, latency-sensitive calls. */
   LLM_MODEL: z.string().default("claude-haiku-5-5"),
   /** Mounts /demo/evil/* (a release tx with a hidden token approval) for the tampered-tap demo. */
   DEMO_TAMPER: z

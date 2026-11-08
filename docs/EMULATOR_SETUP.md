@@ -70,7 +70,7 @@ The backend holds no keys, so it can run right next to the emulators. Needs Node
 
 ```bash
 cd backend
-cp .env.example .env      # PROGRAM_ID is filled in; set TUSDC_MINT (see docs/PHASES.md, Phase 2)
+cp .env.example .env      # PROGRAM_ID and TUSDC_MINT are already filled in
 npm install
 npm run dev               # :3000; check http://localhost:3000/health
 ```
@@ -89,7 +89,7 @@ Handoff screen.
 ## 7. Phase 4 check: a full trade between the two emulators
 
 The fakewallet accounts must hold devnet SOL + tUSDC (funded from the dev laptop
-with `scripts/`; addresses in docs/PHASES.md). Every "approve in fakewallet"
+with `scripts/`: `npm run demo-prep -- <SELLER_ADDR> <BUYER_ADDR>`). Every "approve in fakewallet"
 below takes **two** taps: **AUTHORIZE**, then **SEND TRANSACTION TO CLUSTER**.
 
 1. **Seller (5554):** Connect wallet → **Sell** → title + price → approve in
@@ -117,8 +117,7 @@ below takes **two** taps: **AUTHORIZE**, then **SEND TRANSACTION TO CLUSTER**.
 - **Phase 8:** Listing detail shows the seller's reputation with level and
   "How is this scored?". Handoff shows the other side's. After a release both
   phones show **Your reputation (updated on-chain)** with completed +1.
-- **Phase 9:** run [docs/DEMO.md](DEMO.md) end to end twice. Explorer links
-  open in the emulator's browser.
+- Explorer links open in the emulator's browser.
 
 ## 8. Phase 6 check: the explainer blocks a tampered tap
 

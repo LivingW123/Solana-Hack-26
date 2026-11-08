@@ -31,7 +31,7 @@ it read from RPC itself. A tampered tap is blocked with reasons.
 | [`backend/`](backend) | Node/TS: Solana Pay + Actions tx endpoints, indexer, `/ai/*` (Claude, with template fallbacks) |
 | [`android/`](android) | Kotlin/Compose app: Mobile Wallet Adapter, on-phone explainer rule checks, fake NFC tap |
 | [`scripts/`](scripts) | Devnet helpers: mint tUSDC, airdrop, `demo-prep`, `tap.sh` |
-| [`docs/`](docs) | [Build phases](docs/PHASES.md), [emulator setup](docs/EMULATOR_SETUP.md), [demo script](docs/DEMO.md) |
+| [`docs/`](docs) | [Emulator setup](docs/EMULATOR_SETUP.md) |
 
 ## Run it
 

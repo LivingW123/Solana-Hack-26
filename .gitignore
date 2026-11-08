@@ -1,4 +1,4 @@
-# Secrets — never commit (see CLAUDE.md: commit .env.example only)
+# Secrets: never commit (commit .env.example only)
 .env
 .env.*
 !.env.example
@@ -32,3 +32,9 @@ captures/
 *.iml
 .DS_Store
 Thumbs.db
+
+# Internal notes, kept local (not for the public repo)
+CLAUDE.md
+docs/PHASES.md
+docs/DEMO.md
+docs/DEMO_RECORDING.md

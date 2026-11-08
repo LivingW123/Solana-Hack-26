@@ -1,7 +1,7 @@
 package app.taptrade.data
 
 /**
- * Backend calls (see CLAUDE.md "Backend API"). The backend builds unsigned
+ * Backend calls (see backend/README.md). The backend builds unsigned
  * transactions and indexes chain state; it never holds user keys, and the app
  * confirms anything money-related straight from RPC (`SolanaRpc`).
  */

@@ -7,7 +7,7 @@ import { MAX_TITLE_BYTES } from "./tx";
 export const CATEGORIES = ["textbooks", "electronics", "furniture", "clothing", "tickets", "kitchen", "sports", "other"] as const;
 const MAX_DAYS = 30;
 
-/** What the LLM must return (CLAUDE.md "Natural-language escrow"). */
+/** What the LLM must return for a natural-language listing. */
 const DraftSchema = z.object({
   title: z.string().describe("Short item title, at most 64 bytes, no price or deadline in it"),
   price_usdc: z.number().describe("Asking price in USDC"),
