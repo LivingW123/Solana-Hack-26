@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>TapTrade Simulator</title>
+<meta name="description" content="Click through a TapTrade campus trade: Solana escrow, a tap at the handoff, and on-phone checks that block a tampered transaction.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&family=Sora:wght@600;800&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="page">
+  <aside class="guide" aria-label="Demo guide">
+    <div class="brand"><span class="tap">Tap</span><span class="trade">Trade</span></div>
+    <p class="lede">Campus trades, settled on Solana. The buyer's money waits in an on-chain escrow, and a tap at the handoff releases it to the seller.</p>
+    <p class="sim-note" role="note">Simulation. No wallet, no network: everything here runs in your browser. The real app is Android + Solana devnet.</p>
+
+    <ol class="steps" id="steps"></ol>
+
+    <div class="narration" id="narration" aria-live="polite"></div>
+
+    <div class="controls">
+      <button class="btn primary" id="next">Next step</button>
+      <button class="btn ghost" id="reset">Start over</button>
+    </div>
+    <div class="taps">
+      <button class="btn tapbtn" id="tapGenuine" disabled>Tap phones</button>
+      <button class="btn tapbtn danger" id="tapTamper" disabled>Tampered tap</button>
+    </div>
+
+    <details class="real">
+      <summary>See the real thing on Solana devnet</summary>
+      <ul>
+        <li><a href="https://explorer.solana.com/address/GpbVJKqd8upWam5fskxxkfkkz28aFAxpbbLuNDzoGnR2?cluster=devnet" target="_blank" rel="noopener">TapTrade escrow program</a></li>
+        <li><a href="https://explorer.solana.com/tx/2i9EKNKapczgUpAj7bhSRPf9bis11hoHy1U2EEzVv3majSRbnTx2CTtBsJMiHpwVPMq4sY7Zb8KShbBz1bPe1xpP?cluster=devnet" target="_blank" rel="noopener">A real create_listing</a></li>
+        <li><a href="https://explorer.solana.com/tx/4Dwr4DA7T9puAwZxPyrevdCS4faDhxuXh9U41AQKwzPV4CTsXKMqg8nXQG92PPWiSWfWCLiGH9abtHTASb51DHZi?cluster=devnet" target="_blank" rel="noopener">A real fund_escrow</a></li>
+        <li><a href="https://explorer.solana.com/tx/5D9HVyozrrh19zSGoWKW283VdCysRKN1nKViF7atrGnXfCKU4yiMbhZjMsFLNyfUZwVzscSotSbQBFwvFdgm7cY9?cluster=devnet" target="_blank" rel="noopener">A real release</a></li>
+      </ul>
+      <p class="fine">Transactions from our emulator test runs, between two devnet test wallets.</p>
+    </details>
+  </aside>
+
+  <main class="stage">
+    <section class="device" aria-label="Seller phone">
+      <div class="device-label">Seller</div>
+      <div class="phone" id="seller"></div>
+    </section>
+    <section class="device" aria-label="Buyer phone">
+      <div class="device-label">Buyer</div>
+      <div class="phone" id="buyer"></div>
+    </section>
+  </main>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
