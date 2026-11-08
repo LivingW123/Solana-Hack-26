@@ -7,7 +7,7 @@ Stretch items come only after Phase 9.
 - [x] WSL2 + Ubuntu (Anchor doesn't support native Windows well)
 - [x] Rust, Solana CLI 2.1.21, Anchor 0.31.1, Node 20+ (WSL is aarch64: Solana CLI built from source; Anchor via `cargo install`)
 - [x] `solana config set --url devnet`, keypair (deployer `7viHTXv4fdseFHw66aHu7VvQGhjzVhoaBNammCXiJwjc`), funded via faucet.solana.com
-- [ ] Android Studio + two AVDs (seller = emulator-5554, buyer = emulator-5556) — on the teammate's x86 Windows machine (emulator unsupported on Windows ARM64); see `docs/EMULATOR_SETUP.md`
+- [x] Android SDK (cmdline-tools + JDK 17) + two AVDs (seller = emulator-5554, buyer = emulator-5556) — on the Intel x86 laptop (emulator unsupported on Windows ARM64); see `docs/EMULATOR_SETUP.md`
 
 **Exit:** `anchor --version` and `solana --version` work in WSL; `adb devices` shows both emulators.
 
@@ -29,14 +29,14 @@ Stretch items come only after Phase 9.
 
 **Exit:** Two devnet wallets each hold SOL and tUSDC. ✓ seller `7vSeVcn4BV59Dy3AUkJuUoaiK4yaCzs6HFyGaKrkNpJS`, buyer `94qGDCxhkRiKorFp4VBoaryXwMPCE4P1RwyVSLtBtPBQ`: 0.5 SOL + 1000 tUSDC each
 
-## Phase 3 — Android skeleton  ← *code written, not yet built*
-- [~] Kotlin project (Compose, AGP 8.7.3, Gradle 8.11.1), MWA wallet connect (`WalletManager`)
-- [~] Screens: Listings, Listing detail, Handoff (one ViewModel each)
-- [~] `TapTransport` interface + `DebugTapTransport` + `NfcTapTransport` TODO stub, injected via `AppContainer`
-- [~] Hardcoded backend calls (`FakeBackendApi`; `HttpBackendApi` ready for Phase 4)
-- [ ] Build + run on the teammate's x86 Windows machine (docs/EMULATOR_SETUP.md) — Android Emulator does not run on Windows ARM64
+## Phase 3 — Android skeleton  ✅ done
+- [x] Kotlin project (Compose, AGP 8.7.3, Gradle 8.11.1), MWA wallet connect (`WalletManager`; disconnect clears the MWA auth token)
+- [x] Screens: Listings, Listing detail, Handoff (one ViewModel each)
+- [x] `TapTransport` interface + `DebugTapTransport` + `NfcTapTransport` TODO stub, injected via `AppContainer`
+- [x] Hardcoded backend calls (`FakeBackendApi`; `HttpBackendApi` ready for Phase 4)
+- [x] Built + run on the Intel x86 laptop: AVDs Pixel 7 / API 35 google_apis x86_64 (WHPX), fakewallet "v1" flavor on both
 
-**Exit:** Both emulators connect a wallet and show the screens.
+**Exit:** Both emulators connect a wallet and show the screens. ✓ fakewallet (seed-phrase accounts — press GENERATE; the default "ephemeral" mode makes a new key per connection) seller `6aMZ8C4DZvgbmtDtvL75MHF84W4Dyx1rm9u2PLJtRA4y` (emulator-5554), buyer `8884mmGFfrXAcdFrTu2ispkB3MgQFfbQ1Jb1bAiyhUNv` (emulator-5556): 0.5 SOL + 1000 tUSDC each
 
 ## Phase 4 — Backend tx endpoints + indexer
 - [ ] Node/TS server on :3000, zod on every request body
