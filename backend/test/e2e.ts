@@ -207,7 +207,36 @@ async function main() {
   const repBuyer = await ok("GET", `/reputation/${buyer.publicKey.toBase58()}`);
   assert.equal(repSeller.completed, repBefore.seller + 1);
   assert.equal(repBuyer.completed, repBefore.buyer + 1);
-  console.log(`  seller rep: ${repSeller.score}/100 · ${repSeller.summary}`);
+  console.log(`  seller rep: ${repSeller.score}/100 (${repSeller.level}) · ${repSeller.summary}`);
+
+  step("reputation: counterparties from on-chain history; at most 3 trades counted per counterparty");
+  assert.ok(repSeller.distinctCounterparties >= 1, "seller has traded with the buyer");
+  assert.ok(repSeller.effectiveCompleted <= 3 * repSeller.distinctCounterparties, "per-counterparty cap");
+  assert.ok(repSeller.effectiveCompleted <= repSeller.completed);
+  console.log(`  completed ${repSeller.completed}, counted ${repSeller.effectiveCompleted} (with ${repSeller.distinctCounterparties} counterparty)`);
+  const fresh = await ok("GET", `/reputation/${Keypair.generate().publicKey.toBase58()}`);
+  assert.equal(fresh.score, 50);
+  assert.equal(fresh.level, "New");
+
+  step("natural-language listing (/ai/draft-listing) → review → sign → on-chain → cancel");
+  const d = await ok("POST", "/ai/draft-listing", {
+    text: "sell my calc textbook for 20 USDC by Friday",
+    seller: seller.publicKey.toBase58(),
+  });
+  console.log(`  [${d.draft.source}] "${d.draft.title}" · ${d.draft.priceUsdc} tUSDC · by ${d.draft.deadlineIso} · ${d.draft.category}`);
+  assert.equal(d.draft.price, 20_000_000);
+  assert.match(d.draft.title, /calc/i);
+  assert.ok(new Date(d.draft.deadlineIso).getTime() > Date.now());
+  console.log(`  confirmed in ${(await signAndSend(d.transaction, seller)).ms} ms → ${d.listing}`);
+  const onchain = await ok("GET", `/listings/${d.listing}`);
+  assert.equal(onchain.title, d.draft.title);
+  assert.equal(onchain.price, 20_000_000);
+  assert.equal((await http("POST", "/ai/draft-listing", { text: "hello there" })).status, 422);
+  assert.equal((await http("POST", "/tx/cancel-listing", { listing: d.listing, account: buyer.publicKey.toBase58() })).status, 403);
+  const cancel = await ok("POST", "/tx/cancel-listing", { listing: d.listing, account: seller.publicKey.toBase58() });
+  await signAndSend(cancel.transaction, seller);
+  assert.equal(await conn.getAccountInfo(new PublicKey(d.listing)), null, "cancelled listing is closed");
+  console.log("  cancelled; listing account closed, rent back to seller");
 
   await new Promise((r) => setTimeout(r, 1500));
   const events = (await ok("GET", "/events")).filter((e: any) => [created.listing].includes(e.data.listing)).map((e: any) => e.name);

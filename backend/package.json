@@ -8,6 +8,7 @@
     "start": "tsx src/server.ts",
     "typecheck": "tsc --noEmit",
     "e2e": "tsx test/e2e.ts",
+    "test": "tsx test/draft.test.ts",
     "sync-idl": "cp ../anchor/target/idl/taptrade.json src/idl/ && cp ../anchor/target/types/taptrade.ts src/idl/"
   },
   "dependencies": {

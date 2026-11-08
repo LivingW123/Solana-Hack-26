@@ -6,8 +6,9 @@ import { HttpError, parsePubkey } from "./errors";
 import { indexer, loadListing } from "./indexer";
 import { checkNonce, claimNonce, issueNonce } from "./nonces";
 import { getReputation } from "./reputation";
-import { buildCreateListing, buildFund, buildRelease, buildTamperedRelease, listingSummary, loadEscrow } from "./tx";
+import { buildCancel, buildCreateListing, buildFund, buildRelease, buildTamperedRelease, listingSummary, loadEscrow } from "./tx";
 import { explain } from "./explain";
+import { draftListing } from "./draft";
 import { llmEnabled } from "./llm";
 
 // ---------------------------------------------------------------------------
@@ -27,6 +28,8 @@ const CreateListingBody = z.object({
   description: z.string().max(2000).optional(),
 });
 const NonceBody = z.object({ escrow: Pubkey, seller: Pubkey });
+const CancelBody = z.object({ listing: Pubkey, account: Pubkey });
+const DraftBody =z.object({ text: z.string().trim().min(3).max(300), seller: Pubkey.optional() });
 const ExplainBody = z.object({
   tx_base64: z.string().min(1).max(4000),
   checks: z
@@ -145,6 +148,35 @@ app.post(
         description: body.description,
       }),
     );
+  }),
+);
+
+app.post(
+  "/tx/cancel-listing",
+  ah(async (req, res) => {
+    const body = CancelBody.parse(req.body);
+    res.json(await buildCancel(parsePubkey(body.listing, "listing"), parsePubkey(body.account, "account")));
+  }),
+);
+
+/**
+ * Natural-language listing: sentence → validated draft (LLM, or rules without a key)
+ * → unsigned create_listing for `seller`. The seller reviews the draft before signing.
+ */
+app.post(
+  "/ai/draft-listing",
+  ah(async (req, res) => {
+    const body = DraftBody.parse(req.body);
+    const draft = await draftListing(body.text);
+    if (!body.seller) return void res.json({ draft });
+    const tx = await buildCreateListing({
+      seller: parsePubkey(body.seller, "seller"),
+      title: draft.title,
+      price: BigInt(draft.price),
+      // Off-chain details covered by the on-chain item_hash.
+      description: JSON.stringify({ category: draft.category, deadline: draft.deadlineIso, sentence: body.text }),
+    });
+    res.json({ draft, ...tx });
   }),
 );
 

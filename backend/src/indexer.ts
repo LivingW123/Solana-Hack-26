@@ -2,6 +2,7 @@ import { BN, BorshCoder, EventParser, type IdlAccounts } from "@coral-xyz/anchor
 import { PublicKey } from "@solana/web3.js";
 import { connection, escrowPda, program, programId } from "./chain";
 import { env } from "./config";
+import { recordRelease } from "./reputation";
 import type { Taptrade } from "./idl/taptrade";
 
 type ListingAccount = IdlAccounts<Taptrade>["listing"];
@@ -130,6 +131,7 @@ class Indexer {
         if (seen.size > 500) seen.delete(seen.values().next().value!);
         for (const ev of parser.parseLogs(logs.logs)) {
           const entry = { name: ev.name, signature: logs.signature, slot: ctx.slot, data: plain(ev.data) };
+          if (/^escrowReleased$/i.test(ev.name)) recordRelease(logs.signature, entry.data.buyer, entry.data.seller);
           this.events.unshift(entry);
           console.log(`[event] ${ev.name} ${logs.signature.slice(0, 12)}…`);
         }

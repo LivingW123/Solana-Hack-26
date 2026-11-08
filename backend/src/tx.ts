@@ -90,6 +90,20 @@ export async function buildCreateListing(args: {
 }
 
 // ---------------------------------------------------------------------------
+// cancel_listing
+// ---------------------------------------------------------------------------
+
+/** Seller: close an Open listing (rent back to the seller). */
+export async function buildCancel(listingKey: PublicKey, seller: PublicKey): Promise<TxResult> {
+  const l = await program.account.listing.fetchNullable(listingKey);
+  if (!l) throw new HttpError(404, "Listing not found (sold or cancelled)");
+  if (!l.seller.equals(seller)) throw new HttpError(403, "Only the seller can cancel this listing");
+  if (!("open" in l.status)) throw new HttpError(409, "Listing is funded; it can't be cancelled until the escrow settles");
+  const ix = await program.methods.cancelListing().accountsPartial({ seller, listing: listingKey }).instruction();
+  return { transaction: await unsignedTx(seller, [ix]), message: `Cancel "${l.title}" (rent returned to you)` };
+}
+
+// ---------------------------------------------------------------------------
 // fund_escrow
 // ---------------------------------------------------------------------------
 
