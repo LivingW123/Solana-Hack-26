@@ -27,7 +27,14 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- Phase 5: `solana:` deep-link intent filter for the fake tap goes here. -->
+            <!-- Fake tap: Solana Pay URLs (`solana:http…/tx/release?…`) delivered by
+                 `adb shell am start -d` (scripts/tap.sh). singleTask → onNewIntent. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="solana" />
+            </intent-filter>
         </activity>
     </application>
 </manifest>

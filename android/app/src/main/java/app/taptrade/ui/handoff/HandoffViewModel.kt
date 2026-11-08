@@ -10,7 +10,7 @@ import app.taptrade.data.AccountEvent
 import app.taptrade.data.BackendApi
 import app.taptrade.data.Listing
 import app.taptrade.data.SolanaRpc
-import app.taptrade.tap.DebugTapTransport
+import app.taptrade.tap.DeepLinkTapTransport
 import app.taptrade.tap.TapTransport
 import app.taptrade.wallet.WalletManager
 import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
@@ -67,17 +67,20 @@ class HandoffViewModel(
     val role: HandoffRole = HandoffRole.valueOf(checkNotNull(savedState["role"]))
 
     /** In-app "simulate tap" is only possible with the debug transport. */
-    val canSimulateTap: Boolean = tap is DebugTapTransport
+    val canSimulateTap: Boolean = tap is DeepLinkTapTransport
 
     private val _state = MutableStateFlow(HandoffUiState())
     val state: StateFlow<HandoffUiState> = _state.asStateFlow()
 
     private var watchJob: Job? = null
 
+    private val onTap: (String) -> Unit = { url ->
+        _state.update { it.copy(received = parseReleaseRequest(url), released = null, error = null) }
+    }
+
     init {
-        if (role == HandoffRole.Buyer) {
-            tap.listen { url -> _state.update { it.copy(received = parse(url), released = null, error = null) } }
-        }
+        // A tap held by the transport (deep link that opened this screen) is delivered right here.
+        if (role == HandoffRole.Buyer) tap.listen(onTap)
         load()
     }
 
@@ -157,7 +160,11 @@ class HandoffViewModel(
 
     /** Buyer (debug): pretend a tap delivered this URL. */
     fun simulateTap(url: String) {
-        (tap as? DebugTapTransport)?.deliver(url.trim())
+        (tap as? DeepLinkTapTransport)?.deliver(url.trim())
+    }
+
+    override fun onCleared() {
+        if (role == HandoffRole.Buyer) tap.stopListening(onTap)
     }
 
     /**
@@ -191,14 +198,15 @@ class HandoffViewModel(
         }
     }
 
-    private fun parse(url: String): ReleaseRequest {
-        // `solana:<link>`; the spec URL-encodes links that carry a query, so accept both forms.
-        var inner = url.trim().removePrefix("solana:")
-        if (inner.startsWith("http%3A", ignoreCase = true) || inner.startsWith("https%3A", ignoreCase = true)) {
-            inner = Uri.decode(inner)
-        }
-        val u = Uri.parse(inner)
-        val link = inner.takeIf { u.scheme == "https" || u.scheme == "http" }
-        return ReleaseRequest(url, link, u.getQueryParameter("escrow"), u.getQueryParameter("nonce"))
+}
+
+/** Parse a tapped `solana:<link>`; the spec URL-encodes links that carry a query, so accept both forms. */
+fun parseReleaseRequest(url: String): ReleaseRequest {
+    var inner = url.trim().removePrefix("solana:")
+    if (inner.startsWith("http%3A", ignoreCase = true) || inner.startsWith("https%3A", ignoreCase = true)) {
+        inner = Uri.decode(inner)
     }
+    val u = Uri.parse(inner)
+    val link = inner.takeIf { u.scheme == "https" || u.scheme == "http" }
+    return ReleaseRequest(url, link, u.getQueryParameter("escrow"), u.getQueryParameter("nonce"))
 }

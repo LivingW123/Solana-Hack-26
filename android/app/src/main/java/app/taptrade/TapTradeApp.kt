@@ -5,7 +5,7 @@ import app.taptrade.data.BackendApi
 import app.taptrade.data.FakeBackendApi
 import app.taptrade.data.HttpBackendApi
 import app.taptrade.data.SolanaRpc
-import app.taptrade.tap.DebugTapTransport
+import app.taptrade.tap.DeepLinkTapTransport
 import app.taptrade.tap.NfcTapTransport
 import app.taptrade.tap.TapTransport
 import app.taptrade.wallet.WalletManager
@@ -26,7 +26,7 @@ class AppContainer {
 
     /** Debug builds use the fake tap; release would use NFC (out of scope). */
     val tapTransport: TapTransport =
-        if (BuildConfig.DEBUG) DebugTapTransport() else NfcTapTransport()
+        if (BuildConfig.DEBUG) DeepLinkTapTransport() else NfcTapTransport()
 }
 
 class TapTradeApp : Application() {

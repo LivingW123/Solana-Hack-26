@@ -93,13 +93,10 @@ below takes **two** taps: **AUTHORIZE**, then **SEND TRANSACTION TO CLUSTER**.
    "confirmed in X s".
 3. **Seller:** open the listing → **Ready for handoff** → **Publish for tap**.
    The screen shows "● Watching the escrow on-chain".
-4. **Fake tap** (until Phase 5's deep link): copy the URL from the seller's log
-   and type it into the buyer's "paste the seller's URL" field:
-   ```bash
-   adb -s emulator-5554 logcat -d -s DebugTap | tail -1     # publish: solana:http://…
-   # On the buyer: tap the paste field, then (escape & for the device shell):
-   adb -s emulator-5556 shell input text "'solana:http://10.0.2.2:3000/tx/release?escrow=<E>&nonce=<N>'"
-   ```
-   Then **Simulate tap**.
+4. **Fake tap:** from the repo root, in Git Bash: `scripts/tap.sh`. It reads the
+   seller's published URL from emulator-5554's logcat and opens it on
+   emulator-5556 as a `solana:` deep link. The buyer app jumps to the listing's
+   Handoff screen with "Tap received" from any screen, even if it was closed.
+   (The debug paste field + **Simulate tap** still works as a fallback.)
 5. **Buyer:** **Sign release** → approve. Shows "Released ✓ · confirmed in X s".
 6. **Seller:** flips to **Paid ✓** by itself, from the RPC websocket, with no backend involved.

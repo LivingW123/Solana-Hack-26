@@ -29,4 +29,18 @@ npx tsx airdrop.ts <EMULATOR_WALLET_ADDRESS>
 npx tsx mint-tusdc.ts <EMULATOR_WALLET_ADDRESS>
 ```
 
-`tap.sh` (fake tap) arrives in Phase 5.
+## Fake tap (`tap.sh`)
+
+Runs on the **emulator machine** (bash / Git Bash, `adb` on PATH or `ADB=…`).
+It delivers the seller's Solana Pay URL to the buyer emulator as a `solana:`
+deep link, which is what an NFC tap would hand over.
+
+```bash
+scripts/tap.sh                      # tap the seller's last "Publish for tap" URL (from emulator-5554's logcat)
+scripts/tap.sh <ESCROW> <NONCE>     # build the URL from parts
+scripts/tap.sh --url 'solana:…'     # any URL as-is (tampered-URL demo)
+```
+
+The buyer app opens the matching listing's Handoff screen by itself, even if it
+was on another screen or closed. Override devices with `SELLER=` / `BUYER=`,
+and the URL host with `BACKEND=`.

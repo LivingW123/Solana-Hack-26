@@ -11,4 +11,7 @@ interface TapTransport {
 
     /** Buyer side: `onTap` is called with the URL when a tap arrives. Replaces any previous listener. */
     fun listen(onTap: (url: String) -> Unit)
+
+    /** Buyer side: the screen that registered `onTap` went away (no-op if a newer listener replaced it). */
+    fun stopListening(onTap: (url: String) -> Unit) {}
 }

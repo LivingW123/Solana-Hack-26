@@ -8,7 +8,7 @@ app/src/main/java/app/taptrade/
   TapTradeApp.kt        AppContainer (manual DI): wallet, backend, tapTransport
   MainActivity.kt       creates the MWA ActivityResultSender, hosts navigation
   wallet/               WalletManager (MWA connect / signAndSend), Base58
-  tap/                  TapTransport, DebugTapTransport (fake tap), NfcTapTransport (TODO stub)
+  tap/                  TapTransport, DeepLinkTapTransport (fake tap via `solana:` deep link), NfcTapTransport (TODO stub)
   data/                 Models, BackendApi, HttpBackendApi, FakeBackendApi (hardcoded data)
   ui/listings/          Listings screen + ViewModel
   ui/detail/            Listing detail screen + ViewModel (seller reputation, fund escrow)
